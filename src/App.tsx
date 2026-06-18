@@ -12,14 +12,19 @@ const SECTION_IDS: SectionId[] = ['status', 'transcribe', 'config', 'logs'];
 export function App() {
   const [active, setActive] = useState<SectionId>('status');
   const checkConnection = useAppStore((s) => s.checkConnection);
+  const refreshConfig = useAppStore((s) => s.refreshConfig);
   const dismissToast = useAppStore((s) => s.dismissToast);
   const toasts = useAppStore((s) => s.toasts);
 
   useEffect(() => {
     void checkConnection();
-    const id = window.setInterval(() => void checkConnection(), 30_000);
+    void refreshConfig();
+    const id = window.setInterval(() => {
+      void checkConnection();
+      void refreshConfig();
+    }, 30_000);
     return () => window.clearInterval(id);
-  }, [checkConnection]);
+  }, [checkConnection, refreshConfig]);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {

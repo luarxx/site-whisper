@@ -13,3 +13,4 @@ dist-ssr
 acessar-vps.bat
 .vite-dev.log*
 *.err
+whisper_config.json

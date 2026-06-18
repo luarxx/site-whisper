@@ -147,8 +147,14 @@ export const useAppStore = create<AppState>()(
     const { apiBaseUrl } = get();
     const client = getApiClient(apiBaseUrl);
     try {
-      const config = await client.getConfig();
-      set({ config, configDraft: structuredClone(config) });
+      const newConfig = await client.getConfig();
+      const { config, configDraft } = get();
+      const hasLocalEdits = configDraft && config && JSON.stringify(configDraft) !== JSON.stringify(config);
+      if (hasLocalEdits) {
+        set({ config: newConfig });
+      } else {
+        set({ config: newConfig, configDraft: structuredClone(newConfig) });
+      }
     } catch {
       console.warn('[Store] refreshConfig falhou');
     }
@@ -233,6 +239,7 @@ export const useAppStore = create<AppState>()(
       partialize: (state) => ({
         apiBaseUrl: state.apiBaseUrl,
         transcribeOpts: state.transcribeOpts,
+        config: state.config,
       }),
     },
   ),

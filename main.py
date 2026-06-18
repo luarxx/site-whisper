@@ -1,4 +1,5 @@
 import os
+import json
 import time
 import subprocess
 import re
@@ -22,14 +23,46 @@ app.add_middleware(
 # ──────────────────────────────────────────────────────────
 
 # ── Configuração do Modelo ───────────────────────────────
-MODEL_SIZE = "small"          # tiny | base | small | medium | large-v2 | large-v3
-DEVICE = "cpu"                # cpu | cuda
-COMPUTE_TYPE = "int8"         # int8 (CPU ARM/x86) | float16 (GPU) | float32
-DEFAULT_LANGUAGE = "auto"
-DEFAULT_TEMPERATURE = 0.0
-DEFAULT_BEAM_SIZE = 5
-DEFAULT_VAD_FILTER = True
+CONFIG_FILE = "whisper_config.json"
 
+DEFAULTS = {
+    "model": "small",
+    "device": "cpu",
+    "compute_type": "int8",
+    "language": "auto",
+    "temperature": 0.0,
+    "beam_size": 5,
+    "vad_filter": True,
+}
+
+
+def _load_config() -> dict:
+    if os.path.exists(CONFIG_FILE):
+        try:
+            with open(CONFIG_FILE) as f:
+                return {**DEFAULTS, **json.load(f)}
+        except (json.JSONDecodeError, OSError):
+            print(f"[Config] Arquivo corrompido — usando padrões")
+    return dict(DEFAULTS)
+
+
+def _save_config(cfg: dict):
+    os.makedirs(os.path.dirname(CONFIG_FILE) or ".", exist_ok=True)
+    with open(CONFIG_FILE, "w") as f:
+        json.dump(cfg, f, indent=2)
+
+
+config = _load_config()
+
+MODEL_SIZE = config["model"]
+DEVICE = config["device"]
+COMPUTE_TYPE = config["compute_type"]
+DEFAULT_LANGUAGE = config["language"]
+DEFAULT_TEMPERATURE = config["temperature"]
+DEFAULT_BEAM_SIZE = config["beam_size"]
+DEFAULT_VAD_FILTER = config["vad_filter"]
+
+print(f"[Config] Modelo: {MODEL_SIZE} / {DEVICE} / {COMPUTE_TYPE}")
 print(f"Carregando o modelo Whisper ({MODEL_SIZE})...")
 model = WhisperModel(MODEL_SIZE, device=DEVICE, compute_type=COMPUTE_TYPE)
 print("Modelo carregado com sucesso!")
@@ -157,6 +190,16 @@ def set_config(patch: dict):
     DEFAULT_TEMPERATURE = patch.get("temperature", DEFAULT_TEMPERATURE)
     DEFAULT_BEAM_SIZE = patch.get("beam_size", DEFAULT_BEAM_SIZE)
     DEFAULT_VAD_FILTER = patch.get("vad_filter", DEFAULT_VAD_FILTER)
+
+    _save_config({
+        "model": MODEL_SIZE,
+        "device": DEVICE,
+        "compute_type": COMPUTE_TYPE,
+        "language": DEFAULT_LANGUAGE,
+        "temperature": DEFAULT_TEMPERATURE,
+        "beam_size": DEFAULT_BEAM_SIZE,
+        "vad_filter": DEFAULT_VAD_FILTER,
+    })
 
     if needs_reload:
         print(f"Reiniciando modelo Whisper: {MODEL_SIZE} / {DEVICE} / {COMPUTE_TYPE}")
