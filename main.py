@@ -72,6 +72,10 @@ DEFAULT_TEMPERATURE = config["temperature"]
 DEFAULT_BEAM_SIZE = config["beam_size"]
 DEFAULT_VAD_FILTER = config["vad_filter"]
 
+if DEVICE == "cpu" and COMPUTE_TYPE in ("float16", ):
+    print(f"  [Config] compute_type={COMPUTE_TYPE} não suportado em CPU. Usando int8.")
+    COMPUTE_TYPE = "int8"
+
 print(f"[Config] Modelo: {MODEL_SIZE} / {DEVICE} / {COMPUTE_TYPE}")
 print(f"Carregando o modelo Whisper ({MODEL_SIZE})...")
 try:
@@ -259,6 +263,9 @@ def set_config(patch: dict):
     DEFAULT_TEMPERATURE = patch.get("temperature", DEFAULT_TEMPERATURE)
     DEFAULT_BEAM_SIZE = patch.get("beam_size", DEFAULT_BEAM_SIZE)
     DEFAULT_VAD_FILTER = patch.get("vad_filter", DEFAULT_VAD_FILTER)
+
+    if new_device == "cpu" and new_compute_type == "float16":
+        raise HTTPException(status_code=400, detail="compute_type 'float16' não é suportado em CPU. Use 'int8', 'int8_float16' ou 'float32'.")
 
     if needs_reload:
         old_model, old_device, old_compute = MODEL_SIZE, DEVICE, COMPUTE_TYPE
