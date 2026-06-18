@@ -23,9 +23,8 @@ import { Field } from '@/components/ui/Field';
 import { Select } from '@/components/ui/Select';
 import { Slider } from '@/components/ui/Slider';
 import { useAppStore } from '@/store/useAppStore';
-import { getApiClient } from '@/services/api';
 import { formatBytes, formatDuration, cn } from '@/utils';
-import { LANGUAGES } from '@/types';
+import { LANGUAGES, MODELS } from '@/types';
 
 const ACCEPTED = '.mp3,.wav,.m4a,.ogg,.flac,.webm,.mp4,audio/*';
 
@@ -34,43 +33,24 @@ interface FileState {
   durationSec: number | null;
 }
 
-interface TranscribeOptions {
-  language: string;
-  temperature: number;
-  beam_size: number;
-  vad_filter: boolean;
-}
-
-const DEFAULT_OPTS: TranscribeOptions = {
-  language: 'auto',
-  temperature: 0,
-  beam_size: 5,
-  vad_filter: true,
-};
-
 export function AudioUploader() {
-  const apiBaseUrl = useAppStore((s) => s.apiBaseUrl);
   const isOnline = useAppStore((s) => s.isOnline);
   const isTranscribing = useAppStore((s) => s.isTranscribing);
-  const setTranscribing = useAppStore((s) => s.setTranscribing);
   const transcription = useAppStore((s) => s.transcription);
   const setTranscription = useAppStore((s) => s.setTranscription);
+  const config = useAppStore((s) => s.config);
   const pushToast = useAppStore((s) => s.pushToast);
+  const startTranscription = useAppStore((s) => s.startTranscription);
+  const cancelTranscription = useAppStore((s) => s.cancelTranscription);
+  const transcribeError = useAppStore((s) => s.transcribeError);
+  const transcribeOpts = useAppStore((s) => s.transcribeOpts);
+  const setTranscribeOpts = useAppStore((s) => s.setTranscribeOpts);
 
   const [state, setState] = useState<FileState | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [copied, setCopied] = useState(false);
   const [showOpts, setShowOpts] = useState(false);
-  const [opts, setOpts] = useState<TranscribeOptions>(DEFAULT_OPTS);
-  const [transcribeError, setTranscribeError] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
-  const abortRef = useRef<AbortController | null>(null);
-
-  useEffect(() => {
-    return () => {
-      abortRef.current?.abort();
-    };
-  }, []);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -82,13 +62,13 @@ export function AudioUploader() {
       }
       if (e.key === 'Escape' && isTranscribing) {
         e.preventDefault();
-        handleCancel();
+        cancelTranscription();
       }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [state, isOnline, isTranscribing]);
+  }, [state, isOnline, isTranscribing, cancelTranscription]);
 
   /**
    * Define o arquivo de áudio selecionado e tenta obter sua duração.
@@ -125,14 +105,6 @@ export function AudioUploader() {
     if (file) setFile(file);
   };
 
-  /** Cancela a transcrição em andamento. */
-  const handleCancel = () => {
-    abortRef.current?.abort();
-    abortRef.current = null;
-    setTranscribing(false);
-    pushToast({ type: 'info', message: 'Transcrição cancelada.' });
-  };
-
   /**
    * Processa o arquivo solto na área de drop.
    * @param e - Evento de drag & drop
@@ -161,31 +133,7 @@ export function AudioUploader() {
       pushToast({ type: 'error', message: 'API está offline. Conecte-se primeiro.' });
       return;
     }
-    const client = getApiClient(apiBaseUrl);
-    const controller = new AbortController();
-    abortRef.current = controller;
-    setTranscribing(true);
-    setTranscription('');
-    setTranscribeError(null);
-    try {
-      const result = await client.transcribe(state.file, {
-        language: opts.language === 'auto' ? undefined : opts.language,
-        temperature: opts.temperature,
-        beam_size: opts.beam_size,
-        vad_filter: opts.vad_filter,
-        signal: controller.signal,
-      });
-      setTranscription(result.text);
-      pushToast({ type: 'success', message: 'Transcrição concluída.' });
-    } catch (err) {
-      if (controller.signal.aborted) return;
-      const msg = client.extractErrorMessage(err);
-      setTranscribeError(msg);
-      pushToast({ type: 'error', message: msg });
-    } finally {
-      abortRef.current = null;
-      setTranscribing(false);
-    }
+    await startTranscription(state.file, transcribeOpts);
   };
 
   /**
@@ -293,15 +241,23 @@ export function AudioUploader() {
         )}
 
         <div className="flex items-center justify-between gap-2">
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => setShowOpts((v) => !v)}
-            leftIcon={<Settings2 className="h-4 w-4" />}
-            rightIcon={showOpts ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
-          >
-            {showOpts ? 'Ocultar opções' : 'Opções da IA'}
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setShowOpts((v) => !v)}
+              leftIcon={<Settings2 className="h-4 w-4" />}
+              rightIcon={showOpts ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+            >
+              {showOpts ? 'Ocultar opções' : 'Opções da IA'}
+            </Button>
+            {config && (
+              <span className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white px-2.5 py-0.5 text-xs font-medium text-slate-500 shadow-soft">
+                <Sparkles className="h-3 w-3 text-brand-400" />
+                {MODELS.find((m) => m.value === config.model)?.label ?? config.model}
+              </span>
+            )}
+          </div>
 
           <Button
             onClick={handleTranscribe}
@@ -316,7 +272,7 @@ export function AudioUploader() {
             <Button
               variant="danger"
               size="md"
-              onClick={handleCancel}
+              onClick={cancelTranscription}
               leftIcon={<Square className="h-4 w-4" />}
             >
               Cancelar
@@ -340,8 +296,8 @@ export function AudioUploader() {
                   <Languages className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
                   <Select
                     id="opt-language"
-                    value={opts.language}
-                    onChange={(e) => setOpts((p) => ({ ...p, language: e.target.value }))}
+                    value={transcribeOpts.language}
+                    onChange={(e) => setTranscribeOpts({ language: e.target.value })}
                     options={LANGUAGES.map((l) => ({ value: l.code, label: l.label }))}
                     className="pl-9"
                   />
@@ -359,8 +315,8 @@ export function AudioUploader() {
                     min={1}
                     max={10}
                     step={1}
-                    value={opts.beam_size}
-                    onChange={(e) => setOpts((p) => ({ ...p, beam_size: Math.max(1, Math.min(10, Number(e.target.value) || 5)) }))}
+                    value={transcribeOpts.beam_size}
+                    onChange={(e) => setTranscribeOpts({ beam_size: Math.max(1, Math.min(10, Number(e.target.value) || 5)) })}
                     className="h-10 w-24 rounded-xl border border-slate-200 bg-white px-3 text-sm shadow-soft focus:border-brand-400 focus:outline-none focus:ring-2 focus:ring-brand-100"
                   />
                   <input
@@ -368,8 +324,8 @@ export function AudioUploader() {
                     min={1}
                     max={10}
                     step={1}
-                    value={opts.beam_size}
-                    onChange={(e) => setOpts((p) => ({ ...p, beam_size: Number(e.target.value) }))}
+                    value={transcribeOpts.beam_size}
+                    onChange={(e) => setTranscribeOpts({ beam_size: Number(e.target.value) })}
                     className="flex-1 accent-brand-600"
                   />
                 </div>
@@ -378,11 +334,11 @@ export function AudioUploader() {
 
             <Slider
               label="Temperatura de amostragem"
-              value={opts.temperature}
+              value={transcribeOpts.temperature}
               min={0}
               max={1}
               step={0.05}
-              onChange={(v) => setOpts((p) => ({ ...p, temperature: v }))}
+              onChange={(v) => setTranscribeOpts({ temperature: v })}
               formatValue={(v) => v.toFixed(2)}
               hint="0 = respostas mais determinísticas e fiéis. Valores maiores aumentam a aleatoriedade — útil para criatividade, mas pode gerar erros."
             />
@@ -399,8 +355,8 @@ export function AudioUploader() {
               </div>
               <input
                 type="checkbox"
-                checked={opts.vad_filter}
-                onChange={(e) => setOpts((p) => ({ ...p, vad_filter: e.target.checked }))}
+                checked={transcribeOpts.vad_filter}
+                onChange={(e) => setTranscribeOpts({ vad_filter: e.target.checked })}
                 className="h-5 w-5 cursor-pointer rounded border-slate-300 text-brand-600 focus:ring-brand-500"
               />
             </label>

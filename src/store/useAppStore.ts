@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { persist } from 'zustand/middleware';
 import { getApiClient } from '@/services/api';
 import type { LogLine, WhisperConfig } from '@/types';
 
@@ -8,19 +9,32 @@ interface Toast {
   message: string;
 }
 
+interface TranscribeOptions {
+  language: string;
+  temperature: number;
+  beam_size: number;
+  vad_filter: boolean;
+}
+
 interface AppState {
   apiBaseUrl: string;
   isOnline: boolean;
   isConnecting: boolean;
   transcription: string;
+  transcribeError: string | null;
   isTranscribing: boolean;
+  transcriptionFile: string | null;
   toasts: Toast[];
   config: WhisperConfig | null;
   configDraft: WhisperConfig | null;
   logs: LogLine[];
   isLoadingLogs: boolean;
+  abortController: AbortController | null;
+
+  transcribeOpts: TranscribeOptions;
 
   setApiBaseUrl: (url: string) => void;
+  setTranscribeOpts: (patch: Partial<TranscribeOptions>) => void;
   checkConnection: () => Promise<void>;
   setTranscription: (text: string) => void;
   setTranscribing: (loading: boolean) => void;
@@ -30,31 +44,50 @@ interface AppState {
   updateConfigDraft: (patch: Partial<WhisperConfig>) => void;
   saveConfig: () => Promise<void>;
   refreshLogs: () => Promise<void>;
+  startTranscription: (file: File, opts: TranscribeOptions) => Promise<void>;
+  cancelTranscription: () => void;
 }
 
 let toastIdCounter = 0;
 
-export const useAppStore = create<AppState>()((set, get) => ({
-  apiBaseUrl: import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8000',
-  isOnline: false,
-  isConnecting: false,
-  transcription: '',
-  isTranscribing: false,
-  toasts: [],
-  config: null,
-  configDraft: null,
-  logs: [],
-  isLoadingLogs: false,
+const DEFAULT_OPTS: TranscribeOptions = {
+  language: 'auto',
+  temperature: 0,
+  beam_size: 5,
+  vad_filter: true,
+};
 
-  /**
-   * Define a URL base da API e reconfigura o cliente HTTP.
-   * @param url - URL do endpoint (ex: http://localhost:8000)
-   */
-  setApiBaseUrl: (url) => {
-    console.log(`[Store] setApiBaseUrl -> "${url}"`);
-    set({ apiBaseUrl: url });
-    getApiClient(url);
-  },
+export const useAppStore = create<AppState>()(
+  persist(
+    (set, get) => ({
+      apiBaseUrl: import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8000',
+      isOnline: false,
+      isConnecting: false,
+      transcription: '',
+      transcribeError: null,
+      isTranscribing: false,
+      transcriptionFile: null,
+      abortController: null,
+      transcribeOpts: { ...DEFAULT_OPTS },
+      toasts: [],
+      config: null,
+      configDraft: null,
+      logs: [],
+      isLoadingLogs: false,
+
+      setTranscribeOpts: (patch) => {
+        set((state) => ({ transcribeOpts: { ...state.transcribeOpts, ...patch } }));
+      },
+
+      /**
+       * Define a URL base da API e reconfigura o cliente HTTP.
+       * @param url - URL do endpoint (ex: http://localhost:8000)
+       */
+      setApiBaseUrl: (url) => {
+        console.log(`[Store] setApiBaseUrl -> "${url}"`);
+        set({ apiBaseUrl: url });
+        getApiClient(url);
+      },
 
   /**
    * Testa a conectividade com a API (sem parâmetros).
@@ -156,4 +189,51 @@ export const useAppStore = create<AppState>()((set, get) => ({
       set({ isLoadingLogs: false });
     }
   },
-}));
+
+  startTranscription: async (file, opts) => {
+    const { apiBaseUrl } = get();
+    const client = getApiClient(apiBaseUrl);
+    const controller = new AbortController();
+    set({
+      isTranscribing: true,
+      transcription: '',
+      transcribeError: null,
+      transcriptionFile: file.name,
+      abortController: controller,
+    });
+    try {
+      const result = await client.transcribe(file, {
+        language: opts.language === 'auto' ? undefined : opts.language,
+        temperature: opts.temperature,
+        beam_size: opts.beam_size,
+        vad_filter: opts.vad_filter,
+        signal: controller.signal,
+      });
+      set({ transcription: result.text });
+      get().pushToast({ type: 'success', message: 'Transcrição concluída.' });
+    } catch (err) {
+      if (controller.signal.aborted) return;
+      const msg = client.extractErrorMessage(err);
+      set({ transcribeError: msg });
+      get().pushToast({ type: 'error', message: msg });
+    } finally {
+      set({ isTranscribing: false, abortController: null });
+    }
+  },
+
+  cancelTranscription: () => {
+    const { abortController } = get();
+    abortController?.abort();
+    set({ isTranscribing: false, abortController: null });
+    get().pushToast({ type: 'info', message: 'Transcrição cancelada.' });
+  },
+}),
+    {
+      name: 'whisper-store',
+      partialize: (state) => ({
+        apiBaseUrl: state.apiBaseUrl,
+        transcribeOpts: state.transcribeOpts,
+      }),
+    },
+  ),
+);

@@ -80,7 +80,7 @@ O maior gap é a **ausência de controles de cancelamento e recuperação de err
 ### [P1] Zero aceleradores para power user
 
 - **Local**: `src/App.tsx`, `src/components/Sidebar.tsx`, `src/components/AudioUploader.tsx`
-- **Impacto**: O persona declarado no PRODUCT.md é dev/ops solo fazendo uploads frequentes. Sem atalhos de teclado (Ctrl+Enter para processar, 1/2 para trocar seção, Esc para fechar sidebar mobile), cada ação exige mouse. Em uso repetitivo, isso gera fadiga e frustração.
+- **Impacto**: O persona declarado no docs/PRODUCT.md é dev/ops solo fazendo uploads frequentes. Sem atalhos de teclado (Ctrl+Enter para processar, 1/2 para trocar seção, Esc para fechar sidebar mobile), cada ação exige mouse. Em uso repetitivo, isso gera fadiga e frustração.
 - **Fix**: Adicionar `useEffect` com listener de `keydown` global: teclas `1`/`2` para navegação entre seções, `Ctrl+Enter` para ação principal, `Esc` para dismiss (sidebar, toasts, modal). Documentar atalhos via tooltip ou footer sutil.
 - **WCAG/Standard**: Nielsen #7 (Flexibility and Efficiency) — "Accelerators, invisible to novices, speed up expert interaction"
 - **Suggested command**: `$impeccable harden Sidebar` + `$impeccable harden AudioUploader`
@@ -206,7 +206,7 @@ O maior gap é a **ausência de controles de cancelamento e recuperação de err
 | 5 | P2 | `$impeccable harden ApiClient` | Migrar health check de `/docs` para endpoint dedicado |
 | 6 | P3 | `$impeccable clarify StatusCard` | Adicionar `<label>` ao input de URL |
 | 7 | P3 | `$impeccable clarify Sidebar` | Corrigir aria-label dinâmico no hamburger |
-| 8 | — | `$impeccable document` | Gerar DESIGN.md a partir dos tokens visuais existentes |
+| 8 | — | `$impeccable document` | Gerar docs/DESIGN.md a partir dos tokens visuais existentes |
 | 9 | Final | `$impeccable polish` | Passada final de qualidade em todos os componentes ajustados |
 
 **Projeção pós-correções P1+P2**: 30-32/40 (Good).

@@ -10,7 +10,7 @@ Projeto ESM (`"type": "module"` no `package.json`). Alias de import `@/*` -> `sr
 
 Nao adicionar roteador (React Router, etc.) — o app tem 4 secoes via estado local em `App.tsx`. Nao adicionar framework de UI (MUI, Chakra, Mantine). Nao adicionar state manager alternativo (Redux, Jotai). Nao substituir Vite por outro bundler.
 
-O backend Python (`main.py`, FastAPI) vive NESTE repositorio (na raiz) e e o que vai para o deploy na VPS — o arquivo e copiado para `~/whisper-api/main.py` em `163.176.197.25`. Ver `comandos-vps.md` para operacao do servico na VPS e `main-vps.md` para setup, contrato e historico do backend.
+O backend Python (`main.py`, FastAPI) vive NESTE repositorio (na raiz) e e o que vai para o deploy na VPS — o arquivo e copiado para `~/whisper-api/main.py` em `163.176.197.25`. Ver `docs/comandos-vps.md` para operacao do servico na VPS e `docs/main-vps.md` para setup, contrato e historico do backend.
 
 ---
 
@@ -22,11 +22,11 @@ Leia apenas os arquivos necessarios para a tarefa atual.
 
 Nao investigar `node_modules/`, `dist/`, `tsconfig.*.tsbuildinfo` ou caches, salvo se a tarefa envolver build, tipos ou artefatos gerados.
 
-Nao abrir `comandos-vps.md` ou `main-vps.md` salvo quando a tarefa envolver deploy, VPS, systemd ou `main.py` do backend.
+Nao abrir `docs/comandos-vps.md` ou `docs/main-vps.md` salvo quando a tarefa envolver deploy, VPS, systemd ou `main.py` do backend.
 
-Leia `DESIGN.md` apenas para tarefas de UI/UX, layout, copy visual, cores, animacoes, responsividade ou acessibilidade.
+Leia `docs/DESIGN.md` apenas para tarefas de UI/UX, layout, copy visual, cores, animacoes, responsividade ou acessibilidade.
 
-Leia `UI-UX-CRITIQUE.md` apenas para revisao visual, polimento ou auditoria de design.
+Leia `docs/UI-UX-CRITIQUE.md` apenas para revisao visual, polimento ou auditoria de design.
 
 Logs temporarios `.vite-dev.log`, `.vite-dev.err`, `.vite-dev.log.err` sao ruido de desenvolvimento — ignore salvo quando a tarefa envolver debug do Vite.
 
@@ -53,11 +53,11 @@ Logs temporarios `.vite-dev.log`, `.vite-dev.err`, `.vite-dev.log.err` sao ruido
 
 Documentacao auxiliar:
 - `README.md`: instalacao, scripts, contrato esperado da API.
-- `PRODUCT.md`: proposito, usuarios, principios de design, acessibilidade.
-- `DESIGN.md`: design system completo (cores, tipografia, spacing, sombras, animacoes, tokens por componente).
-- `UI-UX-CRITIQUE.md`: auditoria visual e sugestoes de polimento.
-- `comandos-vps.md`: operacao do servico Whisper na VPS (systemd, logs, debug).
-- `main-vps.md`: setup do `main.py` (FastAPI) na VPS.
+- `docs/PRODUCT.md`: proposito, usuarios, principios de design, acessibilidade.
+- `docs/DESIGN.md`: design system completo (cores, tipografia, spacing, sombras, animacoes, tokens por componente).
+- `docs/UI-UX-CRITIQUE.md`: auditoria visual e sugestoes de polimento.
+- `docs/comandos-vps.md`: operacao do servico Whisper na VPS (systemd, logs, debug).
+- `docs/main-vps.md`: setup do `main.py` (FastAPI) na VPS.
 
 ---
 
@@ -65,7 +65,7 @@ Documentacao auxiliar:
 
 UI / componente visual:
 - Priorize `src/components/` e `src/components/ui/`.
-- Verifique `DESIGN.md` para tokens, estados e variantes.
+- Verifique `docs/DESIGN.md` para tokens, estados e variantes.
 - Nao tocar no store ou services sem necessidade.
 
 Estado global:
@@ -94,14 +94,14 @@ Utilitarios:
 Leia documentacao auxiliar apenas quando a tarefa exigir:
 
 - Setup/instalacao/contrato da API: `README.md`
-- Proposito, usuarios, anti-referencias, acessibilidade: `PRODUCT.md`
-- Design system, tokens, componentes, layout, breakpoints, animacoes: `DESIGN.md`
-- Auditoria visual e polimento: `UI-UX-CRITIQUE.md`
-- Operacao na VPS (systemd, journal, debug): `comandos-vps.md`
-- Setup do backend `main.py`: `main-vps.md`
+- Proposito, usuarios, anti-referencias, acessibilidade: `docs/PRODUCT.md`
+- Design system, tokens, componentes, layout, breakpoints, animacoes: `docs/DESIGN.md`
+- Auditoria visual e polimento: `docs/UI-UX-CRITIQUE.md`
+- Operacao na VPS (systemd, journal, debug): `docs/comandos-vps.md`
+- Setup do backend `main.py`: `docs/main-vps.md`
 - Configuracao Vite/TS: `vite.config.ts`, `tsconfig.json`, `tsconfig.app.json`, `tsconfig.node.json`, `tailwind.config.js`, `postcss.config.js`
 
-Nao ha pasta `Docs/` neste projeto. Nao ha testes automatizados configurados (`package.json` nao define `test`).
+Documentacao auxiliar em `docs/`. Nao ha testes automatizados configurados (`package.json` nao define `test`).
 
 ---
 
@@ -162,10 +162,10 @@ Para URL base da API:
 - Auto-dismiss de toasts em 4500ms em `useAppStore.pushToast`; manter consistencia.
 - `VITE_API_BASE_URL` e a unica env esperada; `.env.example` referencia o mesmo nome.
 - Logs de runtime usam prefixo curto, por exemplo `[API]`, `[Store]`, `[Toaster]`, `[ConfigForm]`, `[AudioUploader]`, `[LogViewer]` — manter o padrao ja existente.
-- O backend Python (`main.py`, FastAPI) vive NESTE repositorio (na raiz). **TODA modificacao que precise ir para a VPS DEVE alterar `main.py` aqui, pois este arquivo e o que vai para o deploy** (copia para `~/whisper-api/main.py` na VPS, conforme `main-vps.md` e `comandos-vps.md`).
+- O backend Python (`main.py`, FastAPI) vive NESTE repositorio (na raiz). **TODA modificacao que precise ir para a VPS DEVE alterar `main.py` aqui, pois este arquivo e o que vai para o deploy** (copia para `~/whisper-api/main.py` na VPS, conforme `docs/main-vps.md` e `docs/comandos-vps.md`).
 - Frontend (`src/`) e backend (`main.py`) compartilham contrato de API. Qualquer mudanca em endpoint, payload, header, formato de erro ou log precisa ser refletida nos dois lados — e a parte do backend sempre em `main.py`, no commit deste repositorio.
-- Este projeto NAO contem `server/`, `scraper/`, `tests/` ou `Docs/`. Nao criar essas pastas.
-- Documentacao viva: atualizar `AGENTS.md`, `README.md`, `DESIGN.md`, `UI-UX-CRITIQUE.md` ou `PRODUCT.md` quando mudar stack, contratos, comandos ou design system.
+- Documentacao auxiliar centralizada em `docs/`. Nao criar `server/`, `scraper/` ou `tests/`.
+- Documentacao viva: atualizar `AGENTS.md`, `README.md`, `docs/DESIGN.md`, `docs/UI-UX-CRITIQUE.md` ou `docs/PRODUCT.md` quando mudar stack, contratos, comandos ou design system.
 - Emojis decorativos em `console.*` ja existem no codigo (`➡️`, `✅`, `❌`); manter consistência ao adicionar novos logs. Nao usar emojis em UI fora dos tons ja mapeados (`Toaster`).
 - **`.gitignore` hygiene:** ao criar arquivo com conteudo sensivel (credenciais, tokens, chaves) ou artefato gerado que nao deve ir para o repositorio (caches, logs, build artifacts), atualizar o `.gitignore` no mesmo PR/commit. Revisar periodicamente se `node_modules/`, `dist/`, `*.tsbuildinfo`, `*.log`, `.env` estao cobertos.
 
@@ -182,14 +182,20 @@ Frontend:
 
 Backend / VPS:
 - `main.py` (raiz) e o backend FastAPI. Para rodar localmente: criar venv, `pip install fastapi uvicorn faster-whisper psutil python-multipart` (ou usar `requirements.txt` se existir), `python main.py` ou `uvicorn main:app --host 0.0.0.0 --port 8000`.
-- Para testar na VPS: seguir `comandos-vps.md` (curl em `/health`, `/v1/audio/transcriptions`, `/logs`).
-- Apos QUALQUER alteracao em `main.py`, rebuild do servico: `sudo systemctl restart whisper` (ver `comandos-vps.md`).
+- Para testar na VPS: seguir `docs/comandos-vps.md` (curl em `/health`, `/v1/audio/transcriptions`, `/logs`).
+- Apos QUALQUER alteracao em `main.py`, rebuild do servico: `sudo systemctl restart whisper` (ver `docs/comandos-vps.md`).
 
 Docs-only:
 - Nao rodar build/testes salvo se solicitado.
 
 Testes automatizados:
 - Nao ha suite de testes configurada. Se uma suite for adicionada no futuro, preferir Vitest (padrao da comunidade Vite/React). Ate la, validar manualmente abrindo o app e exercitando o fluxo afetado.
+
+---
+
+## Aprendizado com bugs
+
+Ao corrigir qualquer bug, adicione uma entrada em `BUGS-AND-FIXES.md` (seguindo o template e instrucoes do proprio arquivo). O arquivo e carregado automaticamente via `opencode.json` → `instructions`. Isso permite que o modelo aprenda com erros passados e evite repeti-los em sessoes futuras.
 
 ---
 
