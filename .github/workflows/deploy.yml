@@ -25,10 +25,9 @@ jobs:
           VPS_USER: ${{ secrets.VPS_USER }}
           VPS_HOST: ${{ secrets.VPS_HOST }}
         run: |
-          printf '%s' "$SSH_KEY" > ~/.ssh/vps_key
+          echo "$SSH_KEY" > ~/.ssh/vps_key
           chmod 600 ~/.ssh/vps_key
-          scp -i ~/.ssh/vps_key main.py ${VPS_USER}@${VPS_HOST}:~/whisper-api/main.py
-          rm ~/.ssh/vps_key
+          scp -o StrictHostKeyChecking=no -i ~/.ssh/vps_key main.py ${VPS_USER}@${VPS_HOST}:~/whisper-api/main.py
 
       - name: Reiniciar servico Whisper
         env:
@@ -36,7 +35,7 @@ jobs:
           VPS_USER: ${{ secrets.VPS_USER }}
           VPS_HOST: ${{ secrets.VPS_HOST }}
         run: |
-          printf '%s' "$SSH_KEY" > ~/.ssh/vps_key
+          echo "$SSH_KEY" > ~/.ssh/vps_key
           chmod 600 ~/.ssh/vps_key
-          ssh -i ~/.ssh/vps_key ${VPS_USER}@${VPS_HOST} "sudo systemctl restart whisper && sudo systemctl status whisper --no-pager"
-          rm ~/.ssh/vps_key
+          ssh -o StrictHostKeyChecking=no -i ~/.ssh/vps_key ${VPS_USER}@${VPS_HOST} "sudo systemctl restart whisper && sudo systemctl status whisper --no-pager"
+          rm -f ~/.ssh/vps_key
