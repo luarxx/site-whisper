@@ -74,8 +74,23 @@ DEFAULT_VAD_FILTER = config["vad_filter"]
 
 print(f"[Config] Modelo: {MODEL_SIZE} / {DEVICE} / {COMPUTE_TYPE}")
 print(f"Carregando o modelo Whisper ({MODEL_SIZE})...")
-model = WhisperModel(MODEL_SIZE, device=DEVICE, compute_type=COMPUTE_TYPE)
-print("Modelo carregado com sucesso!")
+try:
+    model = WhisperModel(MODEL_SIZE, device=DEVICE, compute_type=COMPUTE_TYPE)
+    print("Modelo carregado com sucesso!")
+except Exception as e:
+    print(f"Falha ao carregar modelo ({e}). Usando defaults: small / cpu / int8")
+    MODEL_SIZE, DEVICE, COMPUTE_TYPE = "small", "cpu", "int8"
+    model = WhisperModel(MODEL_SIZE, device=DEVICE, compute_type=COMPUTE_TYPE)
+    _save_config({
+        "model": MODEL_SIZE,
+        "device": DEVICE,
+        "compute_type": COMPUTE_TYPE,
+        "language": DEFAULT_LANGUAGE,
+        "temperature": DEFAULT_TEMPERATURE,
+        "beam_size": DEFAULT_BEAM_SIZE,
+        "vad_filter": DEFAULT_VAD_FILTER,
+    })
+    print("Modelo small carregado como fallback.")
 
 START_TIME = time.time()
 # ──────────────────────────────────────────────────────────
@@ -240,14 +255,29 @@ def set_config(patch: dict):
         or new_compute_type != COMPUTE_TYPE
     )
 
-    MODEL_SIZE = new_model
-    DEVICE = new_device
-    COMPUTE_TYPE = new_compute_type
-
     DEFAULT_LANGUAGE = patch.get("language", DEFAULT_LANGUAGE)
     DEFAULT_TEMPERATURE = patch.get("temperature", DEFAULT_TEMPERATURE)
     DEFAULT_BEAM_SIZE = patch.get("beam_size", DEFAULT_BEAM_SIZE)
     DEFAULT_VAD_FILTER = patch.get("vad_filter", DEFAULT_VAD_FILTER)
+
+    if needs_reload:
+        old_model, old_device, old_compute = MODEL_SIZE, DEVICE, COMPUTE_TYPE
+        print(f"Reiniciando modelo Whisper: {new_model} / {new_device} / {new_compute_type}")
+        import gc
+        try:
+            del model
+            gc.collect()
+            model = WhisperModel(new_model, device=new_device, compute_type=new_compute_type)
+        except Exception as e:
+            err_msg = str(e)
+            print(f"Falha ao recarregar modelo: {err_msg}")
+            MODEL_SIZE, DEVICE, COMPUTE_TYPE = old_model, old_device, old_compute
+            model = WhisperModel(MODEL_SIZE, device=DEVICE, compute_type=COMPUTE_TYPE)
+            raise HTTPException(status_code=400, detail=err_msg)
+
+    MODEL_SIZE = new_model
+    DEVICE = new_device
+    COMPUTE_TYPE = new_compute_type
 
     _save_config({
         "model": MODEL_SIZE,
@@ -258,11 +288,6 @@ def set_config(patch: dict):
         "beam_size": DEFAULT_BEAM_SIZE,
         "vad_filter": DEFAULT_VAD_FILTER,
     })
-
-    if needs_reload:
-        print(f"Reiniciando modelo Whisper: {MODEL_SIZE} / {DEVICE} / {COMPUTE_TYPE}")
-        model = WhisperModel(MODEL_SIZE, device=DEVICE, compute_type=COMPUTE_TYPE)
-        print("Modelo reiniciado com sucesso!")
 
     return {
         "detail": "Configuração aplicada com sucesso.",
