@@ -14,23 +14,29 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Copiar main.py para VPS
-        uses: appleboy/scp-action@v0.1.7
-        with:
-          host: ${{ secrets.VPS_HOST }}
-          username: ${{ secrets.VPS_USER }}
-          key: ${{ secrets.VPS_SSH_KEY }}
-          source: "main.py"
-          target: "/home/ubuntu/whisper-api"
-          strip_components: 0
-          overwrite: true
+      - name: Configurar SSH
+        run: |
+          mkdir -p ~/.ssh
+          ssh-keyscan -H ${{ secrets.VPS_HOST }} >> ~/.ssh/known_hosts 2>/dev/null
 
-      - name: Reiniciar serviço Whisper
-        uses: appleboy/ssh-action@v1.2.2
-        with:
-          host: ${{ secrets.VPS_HOST }}
-          username: ${{ secrets.VPS_USER }}
-          key: ${{ secrets.VPS_SSH_KEY }}
-          script: |
-            sudo systemctl restart whisper
-            sudo systemctl status whisper --no-pager
+      - name: Copiar main.py via SCP
+        env:
+          SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+        run: |
+          printf '%s' "$SSH_KEY" > ~/.ssh/vps_key
+          chmod 600 ~/.ssh/vps_key
+          scp -i ~/.ssh/vps_key main.py ${VPS_USER}@${VPS_HOST}:~/whisper-api/main.py
+          rm ~/.ssh/vps_key
+
+      - name: Reiniciar servico Whisper
+        env:
+          SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+        run: |
+          printf '%s' "$SSH_KEY" > ~/.ssh/vps_key
+          chmod 600 ~/.ssh/vps_key
+          ssh -i ~/.ssh/vps_key ${VPS_USER}@${VPS_HOST} "sudo systemctl restart whisper && sudo systemctl status whisper --no-pager"
+          rm ~/.ssh/vps_key
