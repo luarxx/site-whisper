@@ -164,6 +164,7 @@ Para URL base da API:
 - O backend Python (`main.py`, FastAPI) vive fora deste repositorio; este projeto NAO contem `server/`, `scraper/`, `routes/`, `tests/` ou `Docs/`. Nao criar essas pastas.
 - Documentacao viva: atualizar `AGENTS.md`, `README.md`, `DESIGN.md`, `UI-UX-CRITIQUE.md` ou `PRODUCT.md` quando mudar stack, contratos, comandos ou design system.
 - Emojis decorativos em `console.*` ja existem no codigo (`➡️`, `✅`, `❌`); manter consistência ao adicionar novos logs. Nao usar emojis em UI fora dos tons ja mapeados (`Toaster`).
+- **`.gitignore` hygiene:** ao criar arquivo com conteudo sensivel (credenciais, tokens, chaves) ou artefato gerado que nao deve ir para o repositorio (caches, logs, build artifacts), atualizar o `.gitignore` no mesmo PR/commit. Revisar periodicamente se `node_modules/`, `dist/`, `*.tsbuildinfo`, `*.log`, `.env` estao cobertos.
 
 ---
 
