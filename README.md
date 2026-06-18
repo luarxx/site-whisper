@@ -7,7 +7,8 @@ Painel de controle em **React + TypeScript + Tailwind CSS** para gerenciar e con
 - **A. Status & Monitoramento** — Badge Online/Offline, latência, uptime, modelo ativo, consumo de CPU/Memória/GPU.
 - **B. Configuração do Modelo** — Modelo, device, compute_type, idioma, beam_size, temperatura (slider) e VAD.
 - **C. Transcrição Rápida** — Drag-and-drop de áudio (mp3, wav, m4a, ogg, flac), botão de processar, copiar resultado.
-- **D. Terminal de Logs** — Visual estilo console com auto-refresh, filtro, autoscroll e pausa.
+- **D. WhatsApp Integration** — Vincule seu WhatsApp via Evolution API e receba transcrições automáticas de áudios enviados no self-chat.
+- **E. Terminal de Logs** — Visual estilo console com auto-refresh, filtro, autoscroll e pausa.
 - **Configurável** — URL base da API pode ser alterada no próprio painel (campo de texto) e persistida em `localStorage`.
 
 ## 🧱 Stack
@@ -179,7 +180,85 @@ Todos os erros devem retornar `application/problem+json` no formato:
 { "detail": "Modelo 'huge' não existe.", "code": "INVALID_MODEL" }
 ```
 
+---
+
+## 📱 WhatsApp / Evolution API
+
+A partir da v1.1.0, o backend expõe endpoints proxy para gerenciar uma instância da [Evolution API](https://github.com/EvolutionAPI/evolution-api) e receber webhooks com áudios do WhatsApp.
+
+### Pré-requisitos
+
+- [Evolution API](https://github.com/EvolutionAPI/evolution-api) rodando no mesmo host (porta padrão `8080`).
+- Dependência Python extra: `pip install httpx`
+
+### Configuração
+
+A config da Evolution API fica em `whisper_config.json` na seção `evolution`:
+
+```json
+{
+  "evolution_api_url": "http://localhost:8080",
+  "evolution_api_key": "sua-api-key",
+  "whatsapp_webhook_url": "http://localhost:8000/webhook/evolution"
+}
+```
+
+### Endpoints proxy
+
+#### `POST /whatsapp/instance`
+
+Cria a instância "whisper-bot" na Evolution API e retorna o QR Code para vinculação.
+
+**Request**
+```json
+{
+  "evolutionApiUrl": "http://localhost:8080",
+  "apiKey": "seu-token"
+}
+```
+
+**Resposta `200 OK`**
+```json
+{
+  "qrcode": "data:image/png;base64,...",
+  "state": "connecting",
+  "instanceName": "whisper-bot"
+}
+```
+
+#### `GET /whatsapp/instance`
+
+Retorna o estado atual da conexão WhatsApp.
+
+**Resposta `200 OK`**
+```json
+{
+  "state": "connected",
+  "instanceName": "whisper-bot"
+}
+```
+
+#### `DELETE /whatsapp/instance`
+
+Desconecta e remove a instância do WhatsApp.
+
+**Resposta `200 OK`**
+```json
+{ "detail": "WhatsApp desconectado com sucesso." }
+```
+
+### Webhook
+
+#### `POST /webhook/evolution`
+
+Endpoint que a Evolution API chama quando chega uma nova mensagem. O backend:
+1. Verifica se é uma mensagem de áudio no self-chat
+2. Ignora mensagens enviadas pelo próprio bot (evita loop)
+3. Baixa o áudio, transcreve com Whisper e envia a transcrição de volta no mesmo chat
+
 ## 🐍 Esqueleto sugerido para `main.py`
+
+Dependências Python: `fastapi uvicorn faster-whisper psutil python-multipart httpx`
 
 ```python
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException

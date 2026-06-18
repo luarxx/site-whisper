@@ -24,6 +24,21 @@ usa os valores padrão (`small`/`cpu`/`int8`). Toda alteração via `POST /confi
 automaticamente o JSON, garantindo que a configuração sobreviva a restart do serviço (OOM,
 systemd, reboot).
 
+A partir de jun/2026 também persiste a configuração da Evolution API (`evolution`) no mesmo arquivo:
+
+```json
+{
+  "model": "small",
+  "device": "cpu",
+  ...
+  "evolution": {
+    "evolution_api_url": "http://localhost:8080",
+    "evolution_api_key": "sua-api-key",
+    "whatsapp_webhook_url": ""
+  }
+}
+```
+
 ```python
 # ── Configuração do Modelo ───────────────────────────────
 CONFIG_FILE = "whisper_config.json"
@@ -65,6 +80,10 @@ def _save_config(cfg: dict):
 | `POST` | `/config` | Atualizar configuração e recarregar modelo (persistido em `whisper_config.json`) |
 | `POST` | `/v1/audio/transcriptions` | Transcrição de áudio (OpenAI-compatible) |
 | `GET` | `/logs` | Logs do servidor (via journald) |
+| `POST` | `/whatsapp/instance` | Criar/conectar instância Evolution API (retorna QR Code) |
+| `GET` | `/whatsapp/instance` | Status da conexão WhatsApp |
+| `DELETE` | `/whatsapp/instance` | Desconectar/logout da instância |
+| `POST` | `/webhook/evolution` | Webhook para receber mensagens de áudio da Evolution API |
 
 ## Formato da Transcrição (`POST /v1/audio/transcriptions`)
 
@@ -139,6 +158,40 @@ O frontend (`site-whisper`) está alinhado com os endpoints deste backend:
 | `POST /config` | `POST /config` ✅ |
 | `POST /v1/audio/transcriptions` | `POST /v1/audio/transcriptions` ✅ |
 | `GET /logs?limit=N` | `GET /logs?limit=N` ✅ |
+| `POST /whatsapp/instance` | `POST /whatsapp/instance` ✅ |
+| `GET /whatsapp/instance` | `GET /whatsapp/instance` ✅ |
+| `DELETE /whatsapp/instance` | `DELETE /whatsapp/instance` ✅ |
+
+## Webhook da Evolution API
+
+Quando o frontend cria a instância via `POST /whatsapp/instance`, o backend configura automaticamente a Evolution API para enviar webhooks para `POST /webhook/evolution`.
+
+### Fluxo de transcrição automática
+
+1. O usuário envia um áudio no self-chat ("Falar comigo mesmo")
+2. A Evolution API dispara um webhook `messages.upsert` para o backend
+3. O backend verifica se é áudio e se não é do próprio bot (evita loop)
+4. Baixa o áudio via URL da Evolution API
+5. Transcreve com Whisper
+6. Envia a transcrição de volta no mesmo chat via Evolution API
+
+### Configuração manual da Webhook
+
+Se precisar configurar manualmente (Evolution API rodando antes da integração):
+
+1. Acesse o painel da Evolution API
+2. Adicione um webhook com URL `http://localhost:8000/webhook/evolution`
+3. Ative o evento `messages.upsert`
+
+Ou defina a webhook URL no `whisper_config.json`:
+
+```json
+{
+  "evolution": {
+    "whatsapp_webhook_url": "http://localhost:8000/webhook/evolution"
+  }
+}
+```
 
 ## Modelos Disponíveis
 
@@ -158,4 +211,7 @@ uvicorn[standard]>=0.29
 faster-whisper>=1.0
 psutil>=5.9
 python-multipart>=0.0.9
+httpx>=0.27
 ```
+
+> A dependência `httpx` é necessária a partir da integração com Evolution API (proxy e webhook). Instale com `pip install httpx`.

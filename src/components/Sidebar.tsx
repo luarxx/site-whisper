@@ -8,10 +8,11 @@ import {
   Github,
   Menu,
   X,
+  Smartphone,
 } from 'lucide-react';
 import { cn } from '@/utils';
 
-export type SectionId = 'status' | 'transcribe' | 'config' | 'logs';
+export type SectionId = 'status' | 'transcribe' | 'config' | 'logs' | 'whatsapp';
 
 interface NavItem {
   id: SectionId;
@@ -23,6 +24,7 @@ interface NavItem {
 const NAV_ITEMS: NavItem[] = [
   { id: 'status', label: 'Conexão', description: 'Endpoint da API', icon: Activity },
   { id: 'transcribe', label: 'Transcrição', description: 'Áudio para texto', icon: AudioWaveform },
+  { id: 'whatsapp', label: 'WhatsApp', description: 'Vincular ao WhatsApp', icon: Smartphone },
   { id: 'config', label: 'Configurações', description: 'Modelo e parâmetros', icon: Sliders },
   { id: 'logs', label: 'Logs', description: 'Saída do servidor', icon: Terminal },
 ];

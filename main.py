@@ -3,9 +3,10 @@ import json
 import time
 import subprocess
 import re
+import httpx
 import psutil
-from typing import List, Dict
-from fastapi import FastAPI, File, UploadFile, Form, HTTPException
+from typing import List, Dict, Optional
+from fastapi import FastAPI, File, UploadFile, Form, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from faster_whisper import WhisperModel
 import shutil
@@ -47,9 +48,17 @@ def _load_config() -> dict:
 
 
 def _save_config(cfg: dict):
+    existing = {}
+    if os.path.exists(CONFIG_FILE):
+        try:
+            with open(CONFIG_FILE) as f:
+                existing = json.load(f)
+        except (json.JSONDecodeError, OSError):
+            pass
+    existing.update(cfg)
     os.makedirs(os.path.dirname(CONFIG_FILE) or ".", exist_ok=True)
     with open(CONFIG_FILE, "w") as f:
-        json.dump(cfg, f, indent=2)
+        json.dump(existing, f, indent=2)
 
 
 config = _load_config()
@@ -68,6 +77,54 @@ model = WhisperModel(MODEL_SIZE, device=DEVICE, compute_type=COMPUTE_TYPE)
 print("Modelo carregado com sucesso!")
 
 START_TIME = time.time()
+# ──────────────────────────────────────────────────────────
+
+# ── Configuração Evolution API ────────────────────────────
+EVOLUTION_DEFAULTS = {
+    "evolution_api_url": "http://localhost:8080",
+    "evolution_api_key": "",
+    "whatsapp_webhook_url": "",
+}
+
+EVOLUTION_INSTANCE_NAME = "whisper-bot"
+
+evolution_config = {**EVOLUTION_DEFAULTS, **config.get("evolution", {})}
+
+EVOLUTION_API_URL = evolution_config["evolution_api_url"].rstrip("/")
+EVOLUTION_API_KEY = evolution_config["evolution_api_key"]
+WHATSAPP_WEBHOOK_URL = evolution_config["whatsapp_webhook_url"]
+
+
+def _save_evolution_config():
+    full = _load_config()
+    full["evolution"] = {
+        "evolution_api_url": EVOLUTION_API_URL,
+        "evolution_api_key": EVOLUTION_API_KEY,
+        "whatsapp_webhook_url": WHATSAPP_WEBHOOK_URL,
+    }
+    _save_config(full)
+
+
+def _evolution_headers() -> Dict[str, str]:
+    headers = {"Content-Type": "application/json"}
+    if EVOLUTION_API_KEY:
+        headers["apikey"] = EVOLUTION_API_KEY
+    return headers
+
+
+async def _evolution_proxy(method: str, path: str, **kwargs) -> dict:
+    url = f"{EVOLUTION_API_URL}{path}"
+    async with httpx.AsyncClient(timeout=30) as client:
+        resp = await client.request(method, url, headers=_evolution_headers(), **kwargs)
+        if resp.status_code >= 400:
+            detail = "Erro na Evolution API"
+            try:
+                body = resp.json()
+                detail = body.get("response", {}).get("message", body.get("message", detail))
+            except Exception:
+                detail = resp.text[:200]
+            raise HTTPException(status_code=resp.status_code, detail=detail)
+        return resp.json()
 # ──────────────────────────────────────────────────────────
 
 # ── Health Check ──────────────────────────────────────────
@@ -281,6 +338,189 @@ def get_logs(limit: int = 200) -> Dict:
         return {"lines": [], "total": 0}
     except Exception:
         return {"lines": [], "total": 0}
+
+
+# ── WhatsApp / Evolution API ─────────────────────────────
+@app.post("/whatsapp/instance")
+async def whatsapp_create_instance(patch: dict):
+    global EVOLUTION_API_URL, EVOLUTION_API_KEY, WHATSAPP_WEBHOOK_URL
+
+    if "evolutionApiUrl" in patch:
+        EVOLUTION_API_URL = patch["evolutionApiUrl"].rstrip("/")
+    if "apiKey" in patch:
+        EVOLUTION_API_KEY = patch["apiKey"]
+
+    _save_evolution_config()
+
+    if not EVOLUTION_API_KEY:
+        raise HTTPException(status_code=400, detail="API Key da Evolution é obrigatória.")
+
+    try:
+        instances = await _evolution_proxy("GET", "/instance/fetchInstances")
+    except HTTPException:
+        instances = []
+
+    exists = any(
+        inst.get("instance", {}).get("name") == EVOLUTION_INSTANCE_NAME
+        for inst in (instances if isinstance(instances, list) else instances.get("instances", []))
+    )
+
+    if not exists:
+        webhook_data = {}
+        if WHATSAPP_WEBHOOK_URL:
+            webhook_data["webhook"] = {
+                "url": WHATSAPP_WEBHOOK_URL,
+                "events": ["messages.upsert"],
+            }
+
+        await _evolution_proxy(
+            "POST",
+            "/instance/create",
+            json={
+                "instanceName": EVOLUTION_INSTANCE_NAME,
+                "token": EVOLUTION_API_KEY,
+                **webhook_data,
+                "qrcode": True,
+            },
+        )
+
+    connect_data = await _evolution_proxy(
+        "GET", f"/instance/connect/{EVOLUTION_INSTANCE_NAME}"
+    )
+
+    qrcode = connect_data.get("base64") or connect_data.get("qrcode") or None
+
+    state = "connecting"
+    if qrcode is None:
+        state = "connected"
+
+    return {"qrcode": qrcode, "state": state, "instanceName": EVOLUTION_INSTANCE_NAME}
+
+
+@app.get("/whatsapp/instance")
+async def whatsapp_status():
+    try:
+        data = await _evolution_proxy(
+            "GET", f"/instance/connectionState/{EVOLUTION_INSTANCE_NAME}"
+        )
+        raw = data.get("state", "close")
+        state_map = {
+            "open": "connected",
+            "connecting": "connecting",
+            "close": "idle",
+            "disconnected": "idle",
+        }
+        return {
+            "state": state_map.get(raw, "error"),
+            "instanceName": EVOLUTION_INSTANCE_NAME,
+        }
+    except HTTPException:
+        return {"state": "idle", "instanceName": EVOLUTION_INSTANCE_NAME}
+
+
+@app.delete("/whatsapp/instance")
+async def whatsapp_disconnect():
+    try:
+        await _evolution_proxy(
+            "DELETE", f"/instance/logout/{EVOLUTION_INSTANCE_NAME}"
+        )
+    except HTTPException:
+        pass
+    try:
+        await _evolution_proxy(
+            "DELETE", f"/instance/delete/{EVOLUTION_INSTANCE_NAME}"
+        )
+    except HTTPException:
+        pass
+    return {"detail": "WhatsApp desconectado com sucesso."}
+
+
+# ── Webhook da Evolution API ────────────────────────────
+@app.post("/webhook/evolution")
+async def evolution_webhook(request: Request):
+    body = await request.json()
+    print(f"[Webhook] Evento recebido: {json.dumps(body, indent=2)[:500]}")
+
+    event = body.get("event", "")
+    data = body.get("data", {})
+
+    if event != "messages.upsert":
+        return {"status": "ignored", "event": event}
+
+    message = data.get("message", {})
+    msg_type = message.get("messageType", message.get("type", ""))
+
+    if msg_type not in ("audio", "ptt"):
+        return {"status": "ignored", "type": msg_type}
+
+    key = message.get("key", {})
+    remote_jid = key.get("remoteJid", "")
+    from_me = key.get("fromMe", False)
+
+    if from_me:
+        return {"status": "ignored", "reason": "own_message"}
+
+    audio_url = None
+    audio_message = message.get("audioMessage") or message.get("audio", {})
+    if audio_message:
+        audio_url = audio_message.get("url") or audio_message.get("mediaUrl")
+
+    if not audio_url:
+        return {"status": "ignored", "reason": "no_audio_url"}
+
+    try:
+        async with httpx.AsyncClient(timeout=300) as client:
+            headers = _evolution_headers()
+            audio_resp = await client.get(audio_url, headers=headers)
+            audio_resp.raise_for_status()
+
+        audio_bytes = audio_resp.content
+        temp_path = f"temp_whatsapp_{int(time.time())}.ogg"
+        with open(temp_path, "wb") as f:
+            f.write(audio_bytes)
+
+        try:
+            segments_result, info = model.transcribe(
+                temp_path,
+                language=None if DEFAULT_LANGUAGE == "auto" else DEFAULT_LANGUAGE,
+                beam_size=DEFAULT_BEAM_SIZE,
+                temperature=DEFAULT_TEMPERATURE,
+                vad_filter=DEFAULT_VAD_FILTER,
+            )
+            full_text = "".join(seg.text for seg in segments_result).strip()
+        finally:
+            if os.path.exists(temp_path):
+                os.remove(temp_path)
+
+        if not full_text:
+            full_text = "[Não foi possível transcrever o áudio]"
+
+        await _evolution_proxy(
+            "POST",
+            f"/message/sendText/{EVOLUTION_INSTANCE_NAME}",
+            json={
+                "number": remote_jid,
+                "text": f"🗣️ Transcrição:\n\n{full_text}",
+            },
+        )
+
+        print(f"[Webhook] Transcrição enviada para {remote_jid}")
+        return {"status": "success", "text": full_text}
+
+    except Exception as e:
+        print(f"[Webhook] Erro ao processar áudio: {e}")
+        try:
+            await _evolution_proxy(
+                "POST",
+                f"/message/sendText/{EVOLUTION_INSTANCE_NAME}",
+                json={
+                    "number": remote_jid,
+                    "text": "❌ Erro ao transcrever o áudio. Tente novamente.",
+                },
+            )
+        except Exception:
+            pass
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 if __name__ == "__main__":

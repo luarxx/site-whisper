@@ -56,6 +56,24 @@ export interface ApiError {
   code?: string;
 }
 
+export type WhatsAppState = 'idle' | 'connecting' | 'connected' | 'error';
+
+export interface WhatsAppConfig {
+  evolutionApiUrl: string;
+  apiKey: string;
+}
+
+export interface WhatsAppInstanceData {
+  qrcode?: string;
+  state: WhatsAppState;
+  instanceName: string;
+}
+
+export interface WhatsAppStatusResponse {
+  state: WhatsAppState;
+  instanceName: string;
+}
+
 export const LANGUAGES: { code: LanguageCode; label: string }[] = [
   { code: 'auto', label: 'Detectar automaticamente' },
   { code: 'pt', label: 'Português' },

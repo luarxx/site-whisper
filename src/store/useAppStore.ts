@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { getApiClient } from '@/services/api';
-import type { LogLine, WhisperConfig } from '@/types';
+import type { LogLine, WhisperConfig, WhatsAppConfig, WhatsAppState } from '@/types';
 
 interface Toast {
   id: number;
@@ -33,6 +33,11 @@ interface AppState {
 
   transcribeOpts: TranscribeOptions;
 
+  whatsAppConfig: WhatsAppConfig;
+  whatsAppState: WhatsAppState;
+  whatsAppQrCode: string | null;
+  whatsAppError: string | null;
+
   setApiBaseUrl: (url: string) => void;
   setTranscribeOpts: (patch: Partial<TranscribeOptions>) => void;
   checkConnection: () => Promise<void>;
@@ -46,6 +51,10 @@ interface AppState {
   refreshLogs: () => Promise<void>;
   startTranscription: (file: File, opts: TranscribeOptions) => Promise<void>;
   cancelTranscription: () => void;
+  createWhatsAppInstance: () => Promise<void>;
+  checkWhatsAppStatus: () => Promise<void>;
+  disconnectWhatsApp: () => Promise<void>;
+  setWhatsAppConfig: (patch: Partial<WhatsAppConfig>) => void;
 }
 
 let toastIdCounter = 0;
@@ -74,6 +83,14 @@ export const useAppStore = create<AppState>()(
       configDraft: null,
       logs: [],
       isLoadingLogs: false,
+
+      whatsAppConfig: {
+        evolutionApiUrl: 'http://localhost:8080',
+        apiKey: '',
+      },
+      whatsAppState: 'idle',
+      whatsAppQrCode: null,
+      whatsAppError: null,
 
       setTranscribeOpts: (patch) => {
         set((state) => ({ transcribeOpts: { ...state.transcribeOpts, ...patch } }));
@@ -233,6 +250,61 @@ export const useAppStore = create<AppState>()(
     set({ isTranscribing: false, abortController: null });
     get().pushToast({ type: 'info', message: 'Transcrição cancelada.' });
   },
+
+  setWhatsAppConfig: (patch) => {
+    set((state) => ({ whatsAppConfig: { ...state.whatsAppConfig, ...patch } }));
+  },
+
+  createWhatsAppInstance: async () => {
+    const { apiBaseUrl, whatsAppConfig } = get();
+    const client = getApiClient(apiBaseUrl);
+    set({ whatsAppState: 'connecting', whatsAppQrCode: null, whatsAppError: null });
+    try {
+      const data = await client.createWhatsAppInstance(whatsAppConfig);
+      set({
+        whatsAppState: data.state,
+        whatsAppQrCode: data.qrcode ?? null,
+      });
+      get().pushToast({ type: 'info', message: 'Instância criada. Escaneie o QR Code com seu WhatsApp.' });
+    } catch (err) {
+      const msg = client.extractErrorMessage(err);
+      console.error('[Store] createWhatsAppInstance falhou:', err);
+      set({ whatsAppState: 'error', whatsAppError: msg });
+      get().pushToast({ type: 'error', message: `Falha ao conectar WhatsApp: ${msg}` });
+    }
+  },
+
+  checkWhatsAppStatus: async () => {
+    const { apiBaseUrl } = get();
+    const client = getApiClient(apiBaseUrl);
+    try {
+      const data = await client.getWhatsAppStatus();
+      set({
+        whatsAppState: data.state,
+        whatsAppError: data.state === 'error' ? 'Conexão perdida' : null,
+      });
+    } catch {
+      set({ whatsAppState: 'idle', whatsAppQrCode: null });
+    }
+  },
+
+  disconnectWhatsApp: async () => {
+    const { apiBaseUrl } = get();
+    const client = getApiClient(apiBaseUrl);
+    try {
+      await client.disconnectWhatsApp();
+      set({
+        whatsAppState: 'idle',
+        whatsAppQrCode: null,
+        whatsAppError: null,
+      });
+      get().pushToast({ type: 'info', message: 'WhatsApp desconectado.' });
+    } catch (err) {
+      const msg = client.extractErrorMessage(err);
+      set({ whatsAppError: msg });
+      get().pushToast({ type: 'error', message: `Falha ao desconectar: ${msg}` });
+    }
+  },
 }),
     {
       name: 'whisper-store',
@@ -240,6 +312,7 @@ export const useAppStore = create<AppState>()(
         apiBaseUrl: state.apiBaseUrl,
         transcribeOpts: state.transcribeOpts,
         config: state.config,
+        whatsAppConfig: state.whatsAppConfig,
       }),
     },
   ),

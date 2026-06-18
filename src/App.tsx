@@ -4,10 +4,11 @@ import { StatusCard } from '@/components/StatusCard';
 import { AudioUploader } from '@/components/AudioUploader';
 import { ConfigForm } from '@/components/ConfigForm';
 import { LogViewer } from '@/components/LogViewer';
+import { WhatsAppPanel } from '@/components/WhatsAppPanel';
 import { Toaster } from '@/components/ui/Toaster';
 import { useAppStore } from '@/store/useAppStore';
 
-const SECTION_IDS: SectionId[] = ['status', 'transcribe', 'config', 'logs'];
+const SECTION_IDS: SectionId[] = ['status', 'transcribe', 'config', 'logs', 'whatsapp'];
 
 export function App() {
   const [active, setActive] = useState<SectionId>('status');
@@ -40,7 +41,7 @@ export function App() {
 
       if (isInput || e.ctrlKey || e.metaKey || e.altKey) return;
 
-      if (e.key === '1' || e.key === '2' || e.key === '3' || e.key === '4') {
+      if (e.key === '1' || e.key === '2' || e.key === '3' || e.key === '4' || e.key === '5') {
         const idx = Number(e.key) - 1;
         if (SECTION_IDS[idx]) {
           setActive(SECTION_IDS[idx]);
@@ -88,6 +89,12 @@ export function App() {
               <LogViewer />
             </div>
           )}
+
+          {active === 'whatsapp' && (
+            <div className="space-y-6 animate-fade-in">
+              <WhatsAppPanel />
+            </div>
+          )}
         </div>
       </main>
 
@@ -110,6 +117,8 @@ function getTitle(id: SectionId): string {
       return 'Configurações';
     case 'logs':
       return 'Logs do Servidor';
+    case 'whatsapp':
+      return 'WhatsApp';
   }
 }
 
@@ -127,5 +136,7 @@ function getDescription(id: SectionId): string {
       return 'Ajuste o modelo, device e parâmetros de inferência do Faster-Whisper.';
     case 'logs':
       return 'Visualize a saída do servidor em tempo real.';
+    case 'whatsapp':
+      return 'Conecte seu WhatsApp para transcrição automática de áudios.';
   }
 }
