@@ -1,6 +1,6 @@
 # Whisper Control — Dashboard
 
-Painel de controle em **React + TypeScript + Tailwind CSS** para gerenciar e configurar uma API baseada em [Faster-Whisper](https://github.com/SYSTRAN/faster-whisper) hospedada em uma VPS (Ubuntu).
+Painel de controle em **React + TypeScript + Tailwind CSS** para gerenciar e configurar uma API baseada em [Faster-Whisper](https://github.com/SYSTRAN/faster-whisper). O frontend e o backend (FastAPI) sao servidos pelo mesmo processo na VPS (Ubuntu) — o FastAPI serve o build React via `StaticFiles` e expoe a API REST no mesmo host/porta.
 
 ## ✨ Funcionalidades
 
@@ -333,7 +333,7 @@ async def transcribe(
 
 ## 🛡️ CORS
 
-Como o front roda em `http://localhost:5173` e a API normalmente em outra porta/host, habilite CORS no backend (já incluso no esqueleto acima). Em produção, sirva o build estático (`dist/`) atrás do mesmo Nginx/Apache que serve a API, ou use um proxy reverso.
+Como o front roda em `http://localhost:5173` durante o desenvolvimento, habilite CORS no backend (ja incluso no esqueleto acima). Em producao, o FastAPI serve o build estatico (`dist/`) via `StaticFiles` no mesmo host, dispensando proxy reverso adicional — as chamadas a API usam caminhos relativos (same-origin) via `VITE_API_BASE_URL=""`.
 
 ## 📜 Scripts
 

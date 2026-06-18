@@ -1,6 +1,6 @@
 # main.py — Whisper VPS API
 
-Código atualizado do serviço de transcrição rodando na VPS (`163.176.197.25:8000`).
+Código atualizado do serviço de transcrição rodando na VPS (`SEU_IP:8000`).
 
 ## Stack
 
@@ -146,7 +146,7 @@ Para deploy: faça `npm run build` e copie `dist/*` para `~/whisper-api/static/`
 ### Desenvolvimento
 
 ```bash
-ssh ubuntu@163.176.197.25
+ssh SEU_USUARIO@SEU_IP
 cd ~/whisper-api
 source venv/bin/activate
 python main.py

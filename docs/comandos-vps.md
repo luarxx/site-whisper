@@ -12,9 +12,9 @@ O deploy é automático ao fazer push para `main`. O workflow `.github/workflows
 
 | Secret | Valor |
 |---|---|
-| `SSH_HOST` | `163.176.197.25` |
-| `SSH_USERNAME` | `ubuntu` |
-| `SSH_PRIVATE_KEY` | Conteúdo da chave privada SSH (ex: `~/.ssh/id_ed25519`) |
+| `SSH_HOST` | IP da VPS |
+| `SSH_USERNAME` | usuário SSH (ex: `ubuntu`) |
+| `SSH_PRIVATE_KEY` | Conteúdo da chave privada SSH |
 
 ## Deploy Manual
 
@@ -30,16 +30,16 @@ Ou passo a passo:
 npm run build
 
 # Enviar frontend
-scp -r dist/* ubuntu@163.176.197.25:~/whisper-api/static/
+scp -r dist/* SEU_USUARIO@SEU_IP:~/whisper-api/static/
 
 # Enviar backend
-scp main.py ubuntu@163.176.197.25:~/whisper-api/main.py
+scp main.py SEU_USUARIO@SEU_IP:~/whisper-api/main.py
 
 # Reiniciar
-ssh ubuntu@163.176.197.25 "sudo systemctl restart whisper"
+ssh SEU_USUARIO@SEU_IP "sudo systemctl restart whisper"
 ```
 
-Acesse em `http://163.176.197.25:8000` — o FastAPI serve o frontend React + API no mesmo host.
+Acesse em `http://SEU_IP:8000` — o FastAPI serve o frontend React + API no mesmo host.
 
 ## Gerenciamento do Serviço (systemd)
 
@@ -54,7 +54,7 @@ sudo journalctl -u whisper -f     # Ver logs em tempo real
 ## Rodar Manualmente (para debug)
 
 ```bash
-ssh ubuntu@163.176.197.25
+ssh SEU_USUARIO@SEU_IP
 cd ~/whisper-api
 source venv/bin/activate
 python main.py
@@ -122,7 +122,7 @@ Edite o `.env` com estes valores mínimos:
 
 ```env
 PORT=8080
-AUTHENTICATION_API_KEY=whisper@2026
+AUTHENTICATION_API_KEY=sua-api-key-evolution
 DATABASE_ENABLED=true
 DATABASE_PROVIDER=sqlite
 DATABASE_CONNECTION_URI=file:/opt/evolution-api/evolution.db
@@ -177,7 +177,7 @@ sudo journalctl -u evolution-api -f
 
 ### API Key
 
-A chave definida em `AUTHENTICATION_API_KEY` (ex: `whisper@2026`) é a mesma usada no dashboard, seção WhatsApp.
+A chave definida em `AUTHENTICATION_API_KEY` (ex: `sua-api-key-evolution`) é a mesma usada no dashboard, seção WhatsApp.
 
 ### Atualizar
 

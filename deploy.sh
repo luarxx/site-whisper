@@ -5,8 +5,8 @@ set -euo pipefail
 # Requer: acesso SSH configurado para a VPS
 # Uso:   bash deploy.sh
 
-REMOTE_HOST="${SSH_HOST:-163.176.197.25}"
-REMOTE_USER="${SSH_USERNAME:-ubuntu}"
+REMOTE_HOST="${SSH_HOST:-SEU_IP}"
+REMOTE_USER="${SSH_USERNAME:-SEU_USUARIO}"
 REMOTE_DIR="~/whisper-api"
 
 echo "📦 Build do frontend..."

@@ -308,6 +308,16 @@ export const useAppStore = create<AppState>()(
 }),
     {
       name: 'whisper-store',
+      version: 1,
+      migrate: (persisted, version) => {
+        if (version === 0) {
+          return {
+            ...(persisted as Record<string, unknown>),
+            apiBaseUrl: import.meta.env.VITE_API_BASE_URL ?? '',
+          };
+        }
+        return persisted as AppState;
+      },
       partialize: (state) => ({
         apiBaseUrl: state.apiBaseUrl,
         transcribeOpts: state.transcribeOpts,

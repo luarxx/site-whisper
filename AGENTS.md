@@ -2,7 +2,7 @@
 
 ## Project
 
-Dashboard React + Vite para gerenciar uma API Faster-Whisper self-hosted. Exibe status da conexao, configuracao do modelo, upload de audio para transcricao e terminal de logs vindos de um backend Python (FastAPI, `main.py` na raiz) deployado em outra VPS.
+Dashboard React + Vite para gerenciar uma API Faster-Whisper self-hosted. Exibe status da conexao, configuracao do modelo, upload de audio para transcricao e terminal de logs. O backend Python (FastAPI, `main.py` na raiz) e o frontend (build `dist/`) sao deployados juntos na mesma VPS — o FastAPI serve estaticos via `StaticFiles`, dispensando nginx/proxy adicional.
 
 Stack principal: Vite 5, React 18, TypeScript (strict), Tailwind CSS 3, Zustand (com `persist`), Axios, Lucide React, `clsx` + `tailwind-merge`.
 
@@ -10,7 +10,7 @@ Projeto ESM (`"type": "module"` no `package.json`). Alias de import `@/*` -> `sr
 
 Nao adicionar roteador (React Router, etc.) — o app tem 4 secoes via estado local em `App.tsx`. Nao adicionar framework de UI (MUI, Chakra, Mantine). Nao adicionar state manager alternativo (Redux, Jotai). Nao substituir Vite por outro bundler.
 
-O backend Python (`main.py`, FastAPI) vive NESTE repositorio (na raiz) e e o que vai para o deploy na VPS — o arquivo e copiado para `~/whisper-api/main.py` em `163.176.197.25`. Ver `docs/comandos-vps.md` para operacao do servico na VPS e `docs/main-vps.md` para setup, contrato e historico do backend.
+O backend Python (`main.py`, FastAPI) vive NESTE repositorio (na raiz) e e o que vai para o deploy na VPS — o arquivo e copiado para `~/whisper-api/main.py` em `SEU_IP`, junto com o build do frontend (`dist/`) copiado para `~/whisper-api/static/`. O FastAPI serve estaticos via `StaticFiles`. Ver `docs/comandos-vps.md` para operacao do servico na VPS e `docs/main-vps.md` para setup, contrato e historico do backend.
 
 ---
 
@@ -47,9 +47,12 @@ Logs temporarios `.vite-dev.log`, `.vite-dev.err`, `.vite-dev.log.err` sao ruido
 - `src/components/LogViewer.tsx`: terminal com auto-refresh, filtro, autoscroll, pausa e botao limpar.
 - `src/components/ui/`: primitives reutilizaveis (`Badge`, `Button`, `Card`, `Field`, `Select`, `Slider`, `Toaster`).
 - `src/utils/index.ts`: `cn()` (clsx + tailwind-merge), `formatUptime()`, `formatBytes()` e demais helpers.
-- `main.py`: backend FastAPI (`/health`, `/status`, `/config`, `/v1/audio/transcriptions`, `/logs`) que vai para o deploy na VPS. Toda alteracao de comportamento do backend acontece aqui.
+- `main.py`: backend FastAPI (`/health`, `/status`, `/config`, `/v1/audio/transcriptions`, `/logs`) que vai para o deploy na VPS. Toda alteracao de comportamento do backend acontece aqui. Tambem serve o frontend estatico via `StaticFiles` a partir de `static/`.
 - `vite.config.ts`: plugins Vite (React, DOM Inspector via `vite-plugin-dom-inspector`).
 - `tailwind.config.js`: tema customizado (`brand`, `surface`, `shadow-soft`, `shadow-card`, `shadow-glow`).
+- `.env.production`: variaveis de build de producao (`VITE_API_BASE_URL=""` para chamadas same-origin).
+- `deploy.sh`: script de deploy manual (build, rsync frontend + backend, restart systemd).
+- `.github/workflows/deploy.yml`: CI/CD — deploy automatico no push para `main`.
 
 Documentacao auxiliar:
 - `README.md`: instalacao, scripts, contrato esperado da API.
@@ -58,6 +61,7 @@ Documentacao auxiliar:
 - `docs/UI-UX-CRITIQUE.md`: auditoria visual e sugestoes de polimento.
 - `docs/comandos-vps.md`: operacao do servico Whisper na VPS (systemd, logs, debug).
 - `docs/main-vps.md`: setup do `main.py` (FastAPI) na VPS.
+- `deploy.sh`: script de deploy manual (build frontend + rsync + restart systemd).
 
 ---
 
@@ -99,6 +103,8 @@ Leia documentacao auxiliar apenas quando a tarefa exigir:
 - Auditoria visual e polimento: `docs/UI-UX-CRITIQUE.md`
 - Operacao na VPS (systemd, journal, debug): `docs/comandos-vps.md`
 - Setup do backend `main.py`: `docs/main-vps.md`
+- Deploy (manual): `deploy.sh`
+- Deploy (CI/CD): `.github/workflows/deploy.yml`
 - Configuracao Vite/TS: `vite.config.ts`, `tsconfig.json`, `tsconfig.app.json`, `tsconfig.node.json`, `tailwind.config.js`, `postcss.config.js`
 
 Documentacao auxiliar em `docs/`. Nao ha testes automatizados configurados (`package.json` nao define `test`).
@@ -160,9 +166,9 @@ Para URL base da API:
 - `App.tsx` mantem a logica de roteamento por estado local e hotkeys 1-4; nao adicionar React Router.
 - Polling de conexao em `App.tsx` usa intervalo de 30s; ajustar apenas se a tarefa exigir.
 - Auto-dismiss de toasts em 4500ms em `useAppStore.pushToast`; manter consistencia.
-- `VITE_API_BASE_URL` e a unica env esperada; `.env.example` referencia o mesmo nome.
+- `VITE_API_BASE_URL` e a unica env esperada; `.env.production` define o valor de producao (`""` para same-origin), `.env.example` referencia o mesmo nome.
 - Logs de runtime usam prefixo curto, por exemplo `[API]`, `[Store]`, `[Toaster]`, `[ConfigForm]`, `[AudioUploader]`, `[LogViewer]` — manter o padrao ja existente.
-- O backend Python (`main.py`, FastAPI) vive NESTE repositorio (na raiz). **TODA modificacao que precise ir para a VPS DEVE alterar `main.py` aqui, pois este arquivo e o que vai para o deploy** (copia para `~/whisper-api/main.py` na VPS, conforme `docs/main-vps.md` e `docs/comandos-vps.md`).
+- O backend Python (`main.py`, FastAPI) vive NESTE repositorio (na raiz). **TODA modificacao que precise ir para a VPS DEVE alterar `main.py` aqui, pois este arquivo e o que vai para o deploy** (copia para `~/whisper-api/main.py` na VPS, conforme `docs/main-vps.md` e `docs/comandos-vps.md`). O frontend (build `dist/`) e copiado para `~/whisper-api/static/` e servido via `StaticFiles` pelo mesmo FastAPI.
 - Frontend (`src/`) e backend (`main.py`) compartilham contrato de API. Qualquer mudanca em endpoint, payload, header, formato de erro ou log precisa ser refletida nos dois lados — e a parte do backend sempre em `main.py`, no commit deste repositorio.
 - Documentacao auxiliar centralizada em `docs/`. Nao criar `server/`, `scraper/` ou `tests/`.
 - Documentacao viva: atualizar `AGENTS.md`, `README.md`, `docs/DESIGN.md`, `docs/UI-UX-CRITIQUE.md` ou `docs/PRODUCT.md` quando mudar stack, contratos, comandos ou design system.
