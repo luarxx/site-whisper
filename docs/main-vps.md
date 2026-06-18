@@ -118,6 +118,29 @@ def _save_config(cfg: dict):
 { "detail": "Mensagem descritiva do erro." }
 ```
 
+## Servindo o Frontend (StaticFiles)
+
+Desde jun/2026 o `main.py` serve o build do React localizado em `static/` no mesmo diretório.
+Se a pasta `static/` existir, o FastAPI monta um `StaticFiles` na raiz `/` com fallback SPA
+(`html=True`), servindo `index.html` para qualquer rota que não seja da API.
+
+O frontend é construído com `VITE_API_BASE_URL=""` (`.env.production`) para que as chamadas
+à API usem caminhos relativos (same-origin). Isso dispensa nginx ou proxy reverso adicional.
+
+Para deploy: faça `npm run build` e copie `dist/*` para `~/whisper-api/static/` na VPS.
+
+### Estrutura de diretórios na VPS
+```
+~/whisper-api/
+├── main.py
+├── whisper_config.json
+├── static/          ← Build do React (dist/)
+│   ├── index.html
+│   ├── assets/
+│   └── ...
+└── venv/
+```
+
 ## Execução
 
 ### Desenvolvimento

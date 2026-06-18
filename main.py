@@ -8,6 +8,7 @@ import psutil
 from typing import List, Dict, Optional
 from fastapi import FastAPI, File, UploadFile, Form, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from faster_whisper import WhisperModel
 import shutil
 
@@ -522,6 +523,11 @@ async def evolution_webhook(request: Request):
             pass
         raise HTTPException(status_code=500, detail=str(e))
 
+
+# ── Frontend Estático ─────────────────────────────────────
+STATIC_DIR = os.path.join(os.path.dirname(__file__), "static")
+if os.path.isdir(STATIC_DIR):
+    app.mount("/", StaticFiles(directory=STATIC_DIR, html=True), name="static")
 
 if __name__ == "__main__":
     import uvicorn

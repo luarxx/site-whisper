@@ -1,29 +1,49 @@
-name: Deploy main.py para VPS
+name: Deploy to VPS
 
 on:
   push:
-    branches: [main, master]
-    paths:
-      - "main.py"
-  workflow_dispatch:
+    branches: [main]
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Copiar main.py e reiniciar servico
-        env:
-          SSH_KEY_B64: ${{ secrets.VPS_SSH_KEY }}
-          VPS_USER: ${{ secrets.VPS_USER }}
-          VPS_HOST: ${{ secrets.VPS_HOST }}
-        run: |
-          mkdir -p ~/.ssh
-          echo "$SSH_KEY_B64" | base64 -d > ~/.ssh/vps_key
-          chmod 600 ~/.ssh/vps_key
-          ssh-keyscan -H ${VPS_HOST} >> ~/.ssh/known_hosts 2>/dev/null
-          scp -o StrictHostKeyChecking=no -i ~/.ssh/vps_key main.py ${VPS_USER}@${VPS_HOST}:~/whisper-api/main.py
-          ssh -o StrictHostKeyChecking=no -i ~/.ssh/vps_key ${VPS_USER}@${VPS_HOST} "sudo systemctl restart whisper && sudo systemctl status whisper --no-pager"
-          rm -f ~/.ssh/vps_key
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - run: npm ci
+      - run: npm run build
+
+      - name: Deploy to VPS
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USERNAME }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          source: "dist/*"
+          target: "~/whisper-api/static/"
+          strip_components: 1
+          rm: true
+
+      - name: Deploy main.py
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USERNAME }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          source: "main.py"
+          target: "~/whisper-api/"
+
+      - name: Restart service
+        uses: appleboy/ssh-action@v1.2.1
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USERNAME }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          script: |
+            sudo systemctl restart whisper
+            sudo systemctl status whisper --no-pager

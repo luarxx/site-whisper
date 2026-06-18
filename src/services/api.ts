@@ -237,7 +237,7 @@ export function getApiClient(baseURL?: string): ApiClient {
   if (!_client) {
     const envURL = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8000';
     _client = new ApiClient(baseURL ?? envURL);
-  } else if (baseURL) {
+  } else if (baseURL !== undefined) {
     _client.setBaseURL(baseURL);
   }
   return _client;

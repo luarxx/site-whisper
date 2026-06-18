@@ -1,5 +1,46 @@
 # Comandos Úteis — VPS Whisper API
 
+## Deploy Automático (GitHub Actions)
+
+O deploy é automático ao fazer push para `main`. O workflow `.github/workflows/deploy.yml`:
+1. Faz build do frontend (`dist/`)
+2. Envia `dist/` → `~/whisper-api/static/`
+3. Envia `main.py` → `~/whisper-api/`
+4. Reinicia o serviço `whisper`
+
+**Secrets necessários no GitHub** (`Settings > Secrets and variables > Actions`):
+
+| Secret | Valor |
+|---|---|
+| `SSH_HOST` | `163.176.197.25` |
+| `SSH_USERNAME` | `ubuntu` |
+| `SSH_PRIVATE_KEY` | Conteúdo da chave privada SSH (ex: `~/.ssh/id_ed25519`) |
+
+## Deploy Manual
+
+```bash
+# Do diretório do projeto:
+bash deploy.sh
+```
+
+Ou passo a passo:
+
+```bash
+# Build local
+npm run build
+
+# Enviar frontend
+scp -r dist/* ubuntu@163.176.197.25:~/whisper-api/static/
+
+# Enviar backend
+scp main.py ubuntu@163.176.197.25:~/whisper-api/main.py
+
+# Reiniciar
+ssh ubuntu@163.176.197.25 "sudo systemctl restart whisper"
+```
+
+Acesse em `http://163.176.197.25:8000` — o FastAPI serve o frontend React + API no mesmo host.
+
 ## Gerenciamento do Serviço (systemd)
 
 ```bash
@@ -49,4 +90,100 @@ nano ~/whisper-api/main.py
 
 ```bash
 ss -tlnp | grep 8000
+```
+
+---
+
+## Evolution API (WhatsApp)
+
+### Instalação via Node.js (sem Docker)
+
+```bash
+# 1. Verificar Node.js (precisa >= 18)
+node --version
+
+# Se não tiver Node, instalar:
+curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
+sudo apt-get install -y nodejs
+
+# 2. Clonar o repositório
+git clone https://github.com/EvolutionAPI/evolution-api.git /opt/evolution-api
+cd /opt/evolution-api
+
+# 3. Instalar dependências
+npm install
+
+# 4. Configurar
+cp .env.example .env
+nano .env
+```
+
+Edite o `.env` com estes valores mínimos:
+
+```env
+PORT=8080
+AUTHENTICATION_API_KEY=whisper@2026
+DATABASE_ENABLED=true
+DATABASE_PROVIDER=sqlite
+DATABASE_CONNECTION_URI=file:/opt/evolution-api/evolution.db
+LOG_LEVEL=info
+```
+
+```bash
+# 5. Rodar
+npm run start
+```
+
+### Criar serviço systemd
+
+Para a Evolution rodar automaticamente como serviço:
+
+```bash
+sudo nano /etc/systemd/system/evolution-api.service
+```
+
+Cole:
+
+```ini
+[Unit]
+Description=Evolution API
+After=network.target
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/opt/evolution-api
+ExecStart=/usr/bin/npm run start
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+```
+
+```bash
+# Ativar e iniciar
+sudo systemctl daemon-reload
+sudo systemctl enable evolution-api
+sudo systemctl start evolution-api
+sudo systemctl status evolution-api
+```
+
+### Logs
+
+```bash
+sudo journalctl -u evolution-api -f
+```
+
+### API Key
+
+A chave definida em `AUTHENTICATION_API_KEY` (ex: `whisper@2026`) é a mesma usada no dashboard, seção WhatsApp.
+
+### Atualizar
+
+```bash
+cd /opt/evolution-api
+git pull
+npm install
+sudo systemctl restart evolution-api
 ```
