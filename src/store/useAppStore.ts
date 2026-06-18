@@ -131,9 +131,15 @@ export const useAppStore = create<AppState>()((set, get) => ({
     const { apiBaseUrl, configDraft } = get();
     if (!configDraft) return;
     const client = getApiClient(apiBaseUrl);
-    await client.saveConfig(configDraft);
-    set({ config: structuredClone(configDraft) });
-    get().pushToast({ type: 'success', message: 'Configuração salva. Modelo reiniciando.' });
+    try {
+      await client.saveConfig(configDraft);
+      set({ config: structuredClone(configDraft) });
+      get().pushToast({ type: 'success', message: 'Configuração salva. Modelo reiniciando.' });
+    } catch (err) {
+      console.error('[Store] saveConfig falhou:', err);
+      get().pushToast({ type: 'error', message: 'Falha ao salvar configuração. Verifique a conexão com a API.' });
+      throw err;
+    }
   },
 
   refreshLogs: async () => {

@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react';
-import { Save, RotateCcw, Sliders, Cpu, Languages, Zap, Brain } from 'lucide-react';
+import { useCallback, useEffect, useState } from 'react';
+import { Save, RotateCcw, Sliders, Cpu, Languages, Zap, Brain, RefreshCw } from 'lucide-react';
 import { Card } from '@/components/ui/Card';
 import { Field } from '@/components/ui/Field';
 import { Select } from '@/components/ui/Select';
@@ -18,17 +18,36 @@ import {
 export function ConfigForm() {
   const draft = useAppStore((s) => s.configDraft);
   const liveConfig = useAppStore((s) => s.config);
+  const isOnline = useAppStore((s) => s.isOnline);
+  const isConnecting = useAppStore((s) => s.isConnecting);
   const updateDraft = useAppStore((s) => s.updateConfigDraft);
   const saveConfig = useAppStore((s) => s.saveConfig);
   const refreshConfig = useAppStore((s) => s.refreshConfig);
 
   const [saving, setSaving] = useState(false);
   const [hasChanges, setHasChanges] = useState(false);
+  const [isLoadingConfig, setIsLoadingConfig] = useState(false);
 
   useEffect(() => {
     if (!draft || !liveConfig) return;
     setHasChanges(JSON.stringify(draft) !== JSON.stringify(liveConfig));
   }, [draft, liveConfig]);
+
+  const loadConfig = useCallback(async () => {
+    if (isLoadingConfig || draft) return;
+    setIsLoadingConfig(true);
+    try {
+      await refreshConfig();
+    } finally {
+      setIsLoadingConfig(false);
+    }
+  }, [refreshConfig, isLoadingConfig, draft]);
+
+  useEffect(() => {
+    if (isOnline && !draft) {
+      loadConfig();
+    }
+  }, [isOnline, draft, loadConfig]);
 
   const handleSave = async () => {
     try {
@@ -48,11 +67,33 @@ export function ConfigForm() {
   };
 
   if (!draft) {
+    const loading = isLoadingConfig || isConnecting;
+
     return (
       <Card title="Configurações" description="Modelo e parâmetros do Faster-Whisper" icon={<Sliders className="h-5 w-5" />}>
-        <p className="text-sm text-slate-500">
-          Aguardando conexão com a API para carregar as configurações atuais.
-        </p>
+        {loading ? (
+          <div className="flex items-center gap-3 py-4">
+            <RefreshCw className="h-4 w-4 animate-spin text-brand-600" />
+            <p className="text-sm text-slate-500">Carregando configurações do servidor...</p>
+          </div>
+        ) : (
+          <div className="flex flex-col items-start gap-4">
+            <p className="text-sm text-slate-500">
+              {isOnline
+                ? 'Não foi possível carregar as configurações. Verifique se a API está respondendo.'
+                : 'Aguardando conexão com a API para carregar as configurações atuais.'}
+            </p>
+            <Button
+              variant="secondary"
+              size="sm"
+              disabled={!isOnline}
+              onClick={loadConfig}
+              leftIcon={<RefreshCw className="h-4 w-4" />}
+            >
+              Tentar novamente
+            </Button>
+          </div>
+        )}
       </Card>
     );
   }

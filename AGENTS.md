@@ -2,7 +2,7 @@
 
 ## Project
 
-Dashboard React + Vite para gerenciar uma API Faster-Whisper self-hosted. Exibe status da conexao, configuracao do modelo, upload de audio para transcricao e terminal de logs vindos de um backend Python (FastAPI) que vive em outra VPS.
+Dashboard React + Vite para gerenciar uma API Faster-Whisper self-hosted. Exibe status da conexao, configuracao do modelo, upload de audio para transcricao e terminal de logs vindos de um backend Python (FastAPI, `main.py` na raiz) deployado em outra VPS.
 
 Stack principal: Vite 5, React 18, TypeScript (strict), Tailwind CSS 3, Zustand (com `persist`), Axios, Lucide React, `clsx` + `tailwind-merge`.
 
@@ -10,7 +10,7 @@ Projeto ESM (`"type": "module"` no `package.json`). Alias de import `@/*` -> `sr
 
 Nao adicionar roteador (React Router, etc.) — o app tem 4 secoes via estado local em `App.tsx`. Nao adicionar framework de UI (MUI, Chakra, Mantine). Nao adicionar state manager alternativo (Redux, Jotai). Nao substituir Vite por outro bundler.
 
-O backend Python (`main.py`, FastAPI) nao vive neste repositorio; ver `comandos-vps.md` e `main-vps.md` para operacao na VPS.
+O backend Python (`main.py`, FastAPI) vive NESTE repositorio (na raiz) e e o que vai para o deploy na VPS — o arquivo e copiado para `~/whisper-api/main.py` em `163.176.197.25`. Ver `comandos-vps.md` para operacao do servico na VPS e `main-vps.md` para setup, contrato e historico do backend.
 
 ---
 
@@ -47,6 +47,7 @@ Logs temporarios `.vite-dev.log`, `.vite-dev.err`, `.vite-dev.log.err` sao ruido
 - `src/components/LogViewer.tsx`: terminal com auto-refresh, filtro, autoscroll, pausa e botao limpar.
 - `src/components/ui/`: primitives reutilizaveis (`Badge`, `Button`, `Card`, `Field`, `Select`, `Slider`, `Toaster`).
 - `src/utils/index.ts`: `cn()` (clsx + tailwind-merge), `formatUptime()`, `formatBytes()` e demais helpers.
+- `main.py`: backend FastAPI (`/health`, `/status`, `/config`, `/v1/audio/transcriptions`, `/logs`) que vai para o deploy na VPS. Toda alteracao de comportamento do backend acontece aqui.
 - `vite.config.ts`: plugins Vite (React, DOM Inspector via `vite-plugin-dom-inspector`).
 - `tailwind.config.js`: tema customizado (`brand`, `surface`, `shadow-soft`, `shadow-card`, `shadow-glow`).
 
@@ -161,7 +162,9 @@ Para URL base da API:
 - Auto-dismiss de toasts em 4500ms em `useAppStore.pushToast`; manter consistencia.
 - `VITE_API_BASE_URL` e a unica env esperada; `.env.example` referencia o mesmo nome.
 - Logs de runtime usam prefixo curto, por exemplo `[API]`, `[Store]`, `[Toaster]`, `[ConfigForm]`, `[AudioUploader]`, `[LogViewer]` — manter o padrao ja existente.
-- O backend Python (`main.py`, FastAPI) vive fora deste repositorio; este projeto NAO contem `server/`, `scraper/`, `routes/`, `tests/` ou `Docs/`. Nao criar essas pastas.
+- O backend Python (`main.py`, FastAPI) vive NESTE repositorio (na raiz). **TODA modificacao que precise ir para a VPS DEVE alterar `main.py` aqui, pois este arquivo e o que vai para o deploy** (copia para `~/whisper-api/main.py` na VPS, conforme `main-vps.md` e `comandos-vps.md`).
+- Frontend (`src/`) e backend (`main.py`) compartilham contrato de API. Qualquer mudanca em endpoint, payload, header, formato de erro ou log precisa ser refletida nos dois lados — e a parte do backend sempre em `main.py`, no commit deste repositorio.
+- Este projeto NAO contem `server/`, `scraper/`, `tests/` ou `Docs/`. Nao criar essas pastas.
 - Documentacao viva: atualizar `AGENTS.md`, `README.md`, `DESIGN.md`, `UI-UX-CRITIQUE.md` ou `PRODUCT.md` quando mudar stack, contratos, comandos ou design system.
 - Emojis decorativos em `console.*` ja existem no codigo (`➡️`, `✅`, `❌`); manter consistência ao adicionar novos logs. Nao usar emojis em UI fora dos tons ja mapeados (`Toaster`).
 - **`.gitignore` hygiene:** ao criar arquivo com conteudo sensivel (credenciais, tokens, chaves) ou artefato gerado que nao deve ir para o repositorio (caches, logs, build artifacts), atualizar o `.gitignore` no mesmo PR/commit. Revisar periodicamente se `node_modules/`, `dist/`, `*.tsbuildinfo`, `*.log`, `.env` estao cobertos.
@@ -178,7 +181,9 @@ Frontend:
 - `npm run lint` (alias para `tsc -b --noEmit`) — util antes de commit.
 
 Backend / VPS:
-- Nao ha backend neste repositorio. Para testar `main.py` na VPS, seguir `comandos-vps.md` (curl em `/health`, `/docs`, `/transcribe`).
+- `main.py` (raiz) e o backend FastAPI. Para rodar localmente: criar venv, `pip install fastapi uvicorn faster-whisper psutil python-multipart` (ou usar `requirements.txt` se existir), `python main.py` ou `uvicorn main:app --host 0.0.0.0 --port 8000`.
+- Para testar na VPS: seguir `comandos-vps.md` (curl em `/health`, `/v1/audio/transcriptions`, `/logs`).
+- Apos QUALQUER alteracao em `main.py`, rebuild do servico: `sudo systemctl restart whisper` (ver `comandos-vps.md`).
 
 Docs-only:
 - Nao rodar build/testes salvo se solicitado.

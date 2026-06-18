@@ -25,6 +25,10 @@ app.add_middleware(
 MODEL_SIZE = "small"          # tiny | base | small | medium | large-v2 | large-v3
 DEVICE = "cpu"                # cpu | cuda
 COMPUTE_TYPE = "int8"         # int8 (CPU ARM/x86) | float16 (GPU) | float32
+DEFAULT_LANGUAGE = "auto"
+DEFAULT_TEMPERATURE = 0.0
+DEFAULT_BEAM_SIZE = 5
+DEFAULT_VAD_FILTER = True
 
 print(f"Carregando o modelo Whisper ({MODEL_SIZE})...")
 model = WhisperModel(MODEL_SIZE, device=DEVICE, compute_type=COMPUTE_TYPE)
@@ -57,10 +61,10 @@ def status():
             "model": MODEL_SIZE,
             "device": DEVICE,
             "compute_type": COMPUTE_TYPE,
-            "language": "auto",
-            "temperature": 0.0,
-            "beam_size": 5,
-            "vad_filter": True,
+            "language": DEFAULT_LANGUAGE,
+            "temperature": DEFAULT_TEMPERATURE,
+            "beam_size": DEFAULT_BEAM_SIZE,
+            "vad_filter": DEFAULT_VAD_FILTER,
         },
     }
 
@@ -122,16 +126,55 @@ def get_config():
         "model": MODEL_SIZE,
         "device": DEVICE,
         "compute_type": COMPUTE_TYPE,
-        "language": "auto",
-        "temperature": 0.0,
-        "beam_size": 5,
-        "vad_filter": True,
+        "language": DEFAULT_LANGUAGE,
+        "temperature": DEFAULT_TEMPERATURE,
+        "beam_size": DEFAULT_BEAM_SIZE,
+        "vad_filter": DEFAULT_VAD_FILTER,
     }
 
 
 @app.post("/config")
 def set_config(patch: dict):
-    return {"detail": "Configuração persistente não implementada — reinicie com variáveis de ambiente."}
+    global MODEL_SIZE, DEVICE, COMPUTE_TYPE
+    global DEFAULT_LANGUAGE, DEFAULT_TEMPERATURE, DEFAULT_BEAM_SIZE, DEFAULT_VAD_FILTER
+    global model
+
+    new_model = patch.get("model", MODEL_SIZE)
+    new_device = patch.get("device", DEVICE)
+    new_compute_type = patch.get("compute_type", COMPUTE_TYPE)
+
+    needs_reload = (
+        new_model != MODEL_SIZE
+        or new_device != DEVICE
+        or new_compute_type != COMPUTE_TYPE
+    )
+
+    MODEL_SIZE = new_model
+    DEVICE = new_device
+    COMPUTE_TYPE = new_compute_type
+
+    DEFAULT_LANGUAGE = patch.get("language", DEFAULT_LANGUAGE)
+    DEFAULT_TEMPERATURE = patch.get("temperature", DEFAULT_TEMPERATURE)
+    DEFAULT_BEAM_SIZE = patch.get("beam_size", DEFAULT_BEAM_SIZE)
+    DEFAULT_VAD_FILTER = patch.get("vad_filter", DEFAULT_VAD_FILTER)
+
+    if needs_reload:
+        print(f"Reiniciando modelo Whisper: {MODEL_SIZE} / {DEVICE} / {COMPUTE_TYPE}")
+        model = WhisperModel(MODEL_SIZE, device=DEVICE, compute_type=COMPUTE_TYPE)
+        print("Modelo reiniciado com sucesso!")
+
+    return {
+        "detail": "Configuração aplicada com sucesso.",
+        "config": {
+            "model": MODEL_SIZE,
+            "device": DEVICE,
+            "compute_type": COMPUTE_TYPE,
+            "language": DEFAULT_LANGUAGE,
+            "temperature": DEFAULT_TEMPERATURE,
+            "beam_size": DEFAULT_BEAM_SIZE,
+            "vad_filter": DEFAULT_VAD_FILTER,
+        },
+    }
 
 
 # ── Logs (via journald) ───────────────────────────────────
