@@ -26,6 +26,7 @@ interface AppState {
   toasts: Toast[];
   config: WhisperConfig | null;
   configDraft: WhisperConfig | null;
+  lastSavedConfig: WhisperConfig | null;
   logs: LogLine[];
   isLoadingLogs: boolean;
   abortController: AbortController | null;
@@ -78,6 +79,7 @@ export const useAppStore = create<AppState>()(
       toasts: [],
       config: null,
       configDraft: null,
+      lastSavedConfig: null,
       logs: [],
       isLoadingLogs: false,
 
@@ -146,12 +148,13 @@ export const useAppStore = create<AppState>()(
     const client = getApiClient();
     try {
       const newConfig = await client.getConfig();
-      const { config, configDraft } = get();
+      const { config, configDraft, lastSavedConfig } = get();
       const hasLocalEdits = configDraft && config && JSON.stringify(configDraft) !== JSON.stringify(config);
-      if (hasLocalEdits) {
+      const justSaved = lastSavedConfig && JSON.stringify(newConfig) === JSON.stringify(lastSavedConfig);
+      if (hasLocalEdits && !justSaved) {
         set({ config: newConfig });
       } else {
-        set({ config: newConfig, configDraft: structuredClone(newConfig) });
+        set({ config: newConfig, configDraft: structuredClone(newConfig), lastSavedConfig: null });
       }
     } catch {
       console.warn('[Store] refreshConfig falhou');
@@ -170,7 +173,10 @@ export const useAppStore = create<AppState>()(
     const client = getApiClient();
     try {
       await client.saveConfig(configDraft);
-      set({ config: structuredClone(configDraft) });
+      set({
+        config: structuredClone(configDraft),
+        lastSavedConfig: structuredClone(configDraft),
+      });
       get().pushToast({ type: 'success', message: 'Configuração salva. Modelo reiniciando.' });
     } catch (err) {
       console.error('[Store] saveConfig falhou:', err);

@@ -160,6 +160,7 @@ Para Toasts / notificacoes:
 - Documentacao auxiliar centralizada em `docs/`. Nao criar `server/`, `scraper/` ou `tests/`.
 - Documentacao viva: atualizar `AGENTS.md`, `README.md`, `docs/DESIGN.md`, `docs/UI-UX-CRITIQUE.md` ou `docs/PRODUCT.md` quando mudar stack, contratos, comandos ou design system.
 - Emojis decorativos em `console.*` ja existem no codigo (`➡️`, `✅`, `❌`); manter consistência ao adicionar novos logs. Nao usar emojis em UI fora dos tons ja mapeados (`Toaster`).
+- **Acesso a VPS:** sempre usar `acessar-vps.bat` (na raiz do repositorio) para conectar SSH na VPS. O script contem usuario, host, porta e chave privada configurados.
 - **`.gitignore` hygiene:** ao criar arquivo com conteudo sensivel (credenciais, tokens, chaves) ou artefato gerado que nao deve ir para o repositorio (caches, logs, build artifacts), atualizar o `.gitignore` no mesmo PR/commit. Revisar periodicamente se `node_modules/`, `dist/`, `*.tsbuildinfo`, `*.log`, `.env` estao cobertos.
 
 ---

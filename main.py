@@ -28,6 +28,7 @@ app.add_middleware(
 
 # ── Configuração do Modelo ───────────────────────────────
 CONFIG_FILE = "whisper_config.json"
+LAST_KNOWN_GOOD_CONFIG = "whisper_last_good.json"
 STARTUP_MARKER = ".whisper_startup"
 CRASH_WINDOW_SECONDS = 120
 SAFE_DEFAULTS = {"model": "small", "device": "cpu", "compute_type": "int8"}
@@ -67,6 +68,26 @@ def _save_config(cfg: dict):
         json.dump(existing, f, indent=2)
 
 
+def _save_last_known_good(cfg: dict):
+    snapshot = {k: cfg.get(k, DEFAULTS[k]) for k in DEFAULTS}
+    os.makedirs(os.path.dirname(LAST_KNOWN_GOOD_CONFIG) or ".", exist_ok=True)
+    with open(LAST_KNOWN_GOOD_CONFIG, "w") as f:
+        json.dump(snapshot, f, indent=2)
+
+
+def _load_last_known_good() -> dict | None:
+    if not os.path.exists(LAST_KNOWN_GOOD_CONFIG):
+        return None
+    try:
+        with open(LAST_KNOWN_GOOD_CONFIG) as f:
+            data = json.load(f)
+        if data.get("model") in ("", None):
+            return None
+        return {**DEFAULTS, **data}
+    except (json.JSONDecodeError, OSError):
+        return None
+
+
 def _cleanup_temp_files():
     for f in glob_module.glob("temp_*"):
         try:
@@ -76,27 +97,33 @@ def _cleanup_temp_files():
             pass
 
 
-def _check_crash_and_recover() -> bool:
+def _check_crash_and_recover(config: dict) -> bool:
     if not os.path.exists(STARTUP_MARKER):
         return False
     try:
         age = time.time() - os.path.getmtime(STARTUP_MARKER)
     except OSError:
         return False
-    if age < CRASH_WINDOW_SECONDS:
-        print(f"[Crash] Detectado crash recente ({age:.0f}s atrás). Forçando safe defaults.")
-        return True
-    print(f"[Startup] Marcador antigo ignorado ({age:.0f}s atrás).")
-    return False
+    if age >= CRASH_WINDOW_SECONDS:
+        print(f"[Startup] Marcador antigo ignorado ({age:.0f}s atrás).")
+        return False
+
+    print(f"[Crash] Detectado crash recente ({age:.0f}s atrás).")
+    last_good = _load_last_known_good()
+    if last_good and last_good.get("model") != SAFE_DEFAULTS["model"]:
+        config.update(last_good)
+        _save_config(config)
+        print("[Crash] Restaurando último modelo estável known-good.")
+    else:
+        config.update(SAFE_DEFAULTS)
+        _save_config(config)
+        print("[Crash] Sem last-good, forçando safe defaults.")
+    return True
 
 
 config = _load_config()
 
-crashed = _check_crash_and_recover()
-if crashed:
-    config.update(SAFE_DEFAULTS)
-    _save_config(config)
-    print("[Crash] Configuração redefinida para safe defaults e salva em disco.")
+_check_crash_and_recover(config)
 
 MODEL_SIZE = config["model"]
 DEVICE = config["device"]
@@ -121,6 +148,15 @@ with open(STARTUP_MARKER, "w") as f:
 try:
     model = WhisperModel(MODEL_SIZE, device=DEVICE, compute_type=COMPUTE_TYPE)
     print("Modelo carregado com sucesso!")
+    _save_last_known_good({
+        "model": MODEL_SIZE,
+        "device": DEVICE,
+        "compute_type": COMPUTE_TYPE,
+        "language": DEFAULT_LANGUAGE,
+        "temperature": DEFAULT_TEMPERATURE,
+        "beam_size": DEFAULT_BEAM_SIZE,
+        "vad_filter": DEFAULT_VAD_FILTER,
+    })
     if os.path.exists(STARTUP_MARKER):
         os.remove(STARTUP_MARKER)
 except Exception as e:
@@ -128,6 +164,15 @@ except Exception as e:
     MODEL_SIZE, DEVICE, COMPUTE_TYPE = "small", "cpu", "int8"
     model = WhisperModel(MODEL_SIZE, device=DEVICE, compute_type=COMPUTE_TYPE)
     _save_config({
+        "model": MODEL_SIZE,
+        "device": DEVICE,
+        "compute_type": COMPUTE_TYPE,
+        "language": DEFAULT_LANGUAGE,
+        "temperature": DEFAULT_TEMPERATURE,
+        "beam_size": DEFAULT_BEAM_SIZE,
+        "vad_filter": DEFAULT_VAD_FILTER,
+    })
+    _save_last_known_good({
         "model": MODEL_SIZE,
         "device": DEVICE,
         "compute_type": COMPUTE_TYPE,
@@ -341,6 +386,17 @@ def set_config(patch: dict):
         "beam_size": DEFAULT_BEAM_SIZE,
         "vad_filter": DEFAULT_VAD_FILTER,
     })
+
+    if needs_reload:
+        _save_last_known_good({
+            "model": MODEL_SIZE,
+            "device": DEVICE,
+            "compute_type": COMPUTE_TYPE,
+            "language": DEFAULT_LANGUAGE,
+            "temperature": DEFAULT_TEMPERATURE,
+            "beam_size": DEFAULT_BEAM_SIZE,
+            "vad_filter": DEFAULT_VAD_FILTER,
+        })
 
     return {
         "detail": "Configuração aplicada com sucesso.",
@@ -585,7 +641,7 @@ async def whatsapp_resume():
 @app.post("/webhook/evolution")
 async def evolution_webhook(request: Request):
     body = await request.json()
-    print(f"[Webhook] Evento recebido: {json.dumps(body, indent=2)[:500]}")
+    print(f"[Webhook] Evento recebido: {json.dumps(body, indent=2)[:2000]}")
 
     event = body.get("event", "")
     data = body.get("data", {})
@@ -609,38 +665,53 @@ async def evolution_webhook(request: Request):
     number = remote_jid.split("@")[0]
 
     audio_url = None
+    audio_b64 = None
     audio_message = message.get("audioMessage") or message.get("audio", {})
     if audio_message:
         audio_url = audio_message.get("url") or audio_message.get("mediaUrl")
+        audio_b64 = audio_message.get("base64")
+    if not audio_b64:
+        audio_b64 = message.get("base64")
 
-    if not audio_url:
+    if not audio_url and not audio_b64:
         return {"status": "ignored", "reason": "no_audio_url"}
 
     try:
+        import base64 as b64mod
         audio_bytes = None
 
-        if audio_url and ("mmg.whatsapp.net" in audio_url or "media" in audio_url):
+        if audio_b64:
+            b64_clean = audio_b64
+            if "," in b64_clean:
+                b64_clean = b64_clean.split(",", 1)[1]
+            audio_bytes = b64mod.b64decode(b64_clean)
+            print(f"[Webhook] Áudio via webhookBase64 ({len(audio_bytes)} bytes)")
+
+        if audio_bytes is None:
+            full_message = {"key": data.get("key", {}), "message": message}
             try:
                 media_resp = await _evolution_proxy(
                     "POST",
                     f"/chat/getBase64FromMediaMessage/{EVOLUTION_INSTANCE_NAME}",
-                    json={"message": message},
+                    json=full_message,
                 )
-                import base64 as b64mod
                 b64_data = media_resp.get("base64", "")
                 if "," in b64_data:
                     b64_data = b64_data.split(",", 1)[1]
                 audio_bytes = b64mod.b64decode(b64_data)
-                print(f"[Webhook] Áudio baixado via Evolution API ({len(audio_bytes)} bytes)")
+                print(f"[Webhook] Áudio via getBase64FromMediaMessage ({len(audio_bytes)} bytes)")
             except Exception as media_err:
                 print(f"[Webhook] getBase64FromMediaMessage falhou: {media_err}")
 
         if audio_bytes is None and audio_url:
-            async with httpx.AsyncClient(timeout=300) as client:
-                audio_resp = await client.get(audio_url)
-                audio_resp.raise_for_status()
-            audio_bytes = audio_resp.content
-            print(f"[Webhook] Áudio baixado via URL direta ({len(audio_bytes)} bytes)")
+            try:
+                async with httpx.AsyncClient(timeout=300) as client:
+                    audio_resp = await client.get(audio_url)
+                    audio_resp.raise_for_status()
+                audio_bytes = audio_resp.content
+                print(f"[Webhook] Áudio via URL direta ({len(audio_bytes)} bytes)")
+            except Exception as url_err:
+                print(f"[Webhook] Download direto falhou: {url_err}")
 
         if audio_bytes is None or len(audio_bytes) == 0:
             return {"status": "ignored", "reason": "could_not_download_audio"}

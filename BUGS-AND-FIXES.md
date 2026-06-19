@@ -24,6 +24,22 @@ Registro de bugs encontrados, causas raiz e solucoes aplicadas. O agente deve co
 
 ## Historico
 
+### 2026-06-19 VPS troca de modelo sozinha + config do formulário afeta WhatsApp
+
+**Sintoma:** O modelo exibido no frontend "revertia sozinho" para um menor (ex: small) após alteração. Usuário também questionava se alterar o modelo no formulário de Configurações afetava a transcrição de áudios do WhatsApp.
+
+**Causa:** Dois problemas:
+1. **Backend:** Quando o modelo grande causava OOM crash, o systemd reiniciava o processo. O `_check_crash_and_recover()` forçava `SAFE_DEFAULTS` (small/cpu/int8) sem tentar restaurar o último modelo que havia funcionado. Se o usuário configurasse medium/large, crashava, e voltava para small — um loop potencial.
+2. **Frontend:** O polling de 30s em `refreshConfig()` comparava `configDraft` com `config` para detectar edições locais, mas após salvar (`saveConfig`), a próxima chamada de polling chegava com o modelo antigo (servidor ainda reiniciando) e sobrescrevia o draft, causando reversão visual do Select.
+
+**Solucao:**
+1. **Backend:** Adicionado arquivo `whisper_last_good.json` que salva a última configuração que carregou com sucesso. Se crashar, o sistema restaura esse `last_known_good` antes de cair nos `SAFE_DEFAULTS`. Também salva `last_known_good` após reload bem-sucedido via `POST /config`.
+2. **Frontend:** Adicionado `lastSavedConfig` no store. Após `saveConfig()`, o valor salvo é gravado em `lastSavedConfig`. No `refreshConfig()`, se o novo config do servidor é igual ao `lastSavedConfig` (servidor já processou a mudança), o draft é atualizado normalmente. Se diferente (servidor ainda reiniciando), preserva o draft local — evitando reversão visual.
+
+**Arquivos afetados:** `main.py`, `src/store/useAppStore.ts`
+
+**Tags:** `backend` `frontend` `state` `config` `whatsapp`
+
 ### 2026-06-19 WhatsApp status retorna "idle" mesmo conectado (Evolution API v2.3.7)
 
 **Sintoma:** O endpoint `GET /whatsapp/instance` retornava `{"state":"idle"}` apesar da instância estar conectada (`connectionStatus: "open"` na Evolution API). O frontend mostrava "Desconectado" e o QR Code aparecia desnecessariamente.
