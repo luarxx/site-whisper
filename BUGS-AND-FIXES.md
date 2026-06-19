@@ -24,6 +24,18 @@ Registro de bugs encontrados, causas raiz e solucoes aplicadas. O agente deve co
 
 ## Historico
 
+### 2026-06-19 Áudio chega no webhook mas é ignorado por messageType="audioMessage"
+
+**Sintoma:** Webhook é recebido pelo Whisper (retorna 200), mas o áudio nunca é baixado/transcrito. Logs mostram o evento `messages.upsert` com `audioMessage` mas nenhuma ação subsequente.
+
+**Causa:** A Evolution API envia `messageType: "audioMessage"` no payload do webhook. O handler em `/webhook/evolution` verificava `msg_type not in ("audio", "ptt")`, e como `"audioMessage"` não está nessa lista, retornava `{"status": "ignored", "type": "audioMessage"}` prematuramente.
+
+**Solucao:** Adicionar `"audioMessage"` à lista de tipos aceitos e também verificar se o objeto `message` contém um campo `audioMessage` diretamente.
+
+**Arquivos afetados:** `main.py`
+
+**Tags:** `backend` `api` `whatsapp` `webhook`
+
 ### 2026-06-19 Áudio do WhatsApp não é transcrito (webhook não configurado + self-chat ignorado)
 
 **Sintoma:** Ao enviar áudio no self-chat do WhatsApp, a Evolution API recebe a mensagem mas o Whisper nunca processa. Nenhuma transcrição é retornada.

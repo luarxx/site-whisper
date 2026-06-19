@@ -591,7 +591,7 @@ async def evolution_webhook(request: Request):
     message = data.get("message", {})
     msg_type = message.get("messageType", message.get("type", ""))
 
-    if msg_type not in ("audio", "ptt"):
+    if not (msg_type in ("audio", "ptt", "audioMessage") or message.get("audioMessage")):
         return {"status": "ignored", "type": msg_type}
 
     key = message.get("key", {})
