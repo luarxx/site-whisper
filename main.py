@@ -439,6 +439,7 @@ async def whatsapp_create_instance(patch: dict):
     if "apiKey" in patch:
         EVOLUTION_API_KEY = patch["apiKey"]
 
+    WHATSAPP_WEBHOOK_URL = "http://localhost:8000/webhook/evolution"
     _save_evolution_config()
 
     if not EVOLUTION_API_KEY:
@@ -455,13 +456,6 @@ async def whatsapp_create_instance(patch: dict):
     )
 
     if not exists:
-        webhook_data = {}
-        if WHATSAPP_WEBHOOK_URL:
-            webhook_data["webhook"] = {
-                "url": WHATSAPP_WEBHOOK_URL,
-                "events": ["messages.upsert"],
-            }
-
         await _evolution_proxy(
             "POST",
             "/instance/create",
@@ -469,10 +463,27 @@ async def whatsapp_create_instance(patch: dict):
                 "instanceName": EVOLUTION_INSTANCE_NAME,
                 "integration": "WHATSAPP-BAILEYS",
                 "token": EVOLUTION_API_KEY,
-                **webhook_data,
+                "webhook": {
+                    "url": WHATSAPP_WEBHOOK_URL,
+                    "events": ["MESSAGES_UPSERT"],
+                },
                 "qrcode": True,
             },
         )
+    else:
+        await _evolution_proxy(
+            "POST",
+            f"/webhook/set/{EVOLUTION_INSTANCE_NAME}",
+            json={
+                "webhook": {
+                    "url": WHATSAPP_WEBHOOK_URL,
+                    "events": ["MESSAGES_UPSERT"],
+                    "enabled": True,
+                },
+            },
+        )
+
+    _save_evolution_config()
 
     connect_data = await _evolution_proxy(
         "GET", f"/instance/connect/{EVOLUTION_INSTANCE_NAME}"
@@ -585,10 +596,10 @@ async def evolution_webhook(request: Request):
 
     key = message.get("key", {})
     remote_jid = key.get("remoteJid", "")
-    from_me = key.get("fromMe", False)
+    is_from_me = key.get("fromMe", False)
 
-    if from_me:
-        return {"status": "ignored", "reason": "own_message"}
+    if not is_from_me:
+        return {"status": "ignored", "reason": "not_self_chat"}
 
     audio_url = None
     audio_message = message.get("audioMessage") or message.get("audio", {})

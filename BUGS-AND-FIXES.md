@@ -24,7 +24,21 @@ Registro de bugs encontrados, causas raiz e solucoes aplicadas. O agente deve co
 
 ## Historico
 
-<!-- Adicione entradas abaixo desta linha conforme bugs forem encontrados e resolvidos -->
+### 2026-06-19 Áudio do WhatsApp não é transcrito (webhook não configurado + self-chat ignorado)
+
+**Sintoma:** Ao enviar áudio no self-chat do WhatsApp, a Evolution API recebe a mensagem mas o Whisper nunca processa. Nenhuma transcrição é retornada.
+
+**Causa:** Duas causas:
+1. `WHATSAPP_WEBHOOK_URL` estava vazio (`""`) no `main.py`. O `POST /whatsapp/instance` só configurava webhook na Evolution API se essa URL fosse preenchida, mas nunca era.
+2. O webhook (`/webhook/evolution`) ignorava mensagens com `fromMe: true`, exatamente o caso do self-chat ("falar comigo mesmo").
+
+**Solucao:**
+1. `POST /whatsapp/instance` agora define automaticamente `WHATSAPP_WEBHOOK_URL = "http://localhost:8000/webhook/evolution"` e sempre inclui o webhook na criação da instância. Se a instância já existe, faz `PUT /instance/settings/{name}` para atualizar o webhook.
+2. Invertida a lógica do `fromMe`: agora só transcreve mensagens com `fromMe: true` (self-chat), ignorando mensagens de terceiros.
+
+**Arquivos afetados:** `main.py`
+
+**Tags:** `backend` `api` `whatsapp`
 
 ### 2026-06-18 Config do modelo reverte após crash/restart do servidor
 
