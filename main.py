@@ -8,7 +8,7 @@ import uuid
 import httpx
 import psutil
 from typing import List, Dict, Optional
-from fastapi import FastAPI, File, UploadFile, Form, HTTPException, Request
+from fastapi import FastAPI, File, UploadFile, Form, HTTPException, Request, Body
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from faster_whisper import WhisperModel
@@ -427,11 +427,16 @@ def _extract_whatsapp_state(data) -> str:
         val = data.get("state") or data.get("connectionState")
         if isinstance(val, str):
             return val
+        inst = data.get("instance")
+        if isinstance(inst, dict):
+            val2 = inst.get("state") or inst.get("connectionState")
+            if isinstance(val2, str):
+                return val2
     return "close"
 
 
 @app.post("/whatsapp/instance")
-async def whatsapp_create_instance(patch: dict):
+async def whatsapp_create_instance(patch: dict = Body(default={})):
     global EVOLUTION_API_URL, EVOLUTION_API_KEY, WHATSAPP_WEBHOOK_URL
 
     if "evolutionApiUrl" in patch:

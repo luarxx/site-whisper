@@ -58,11 +58,6 @@ export interface ApiError {
 
 export type WhatsAppState = 'idle' | 'connecting' | 'connected' | 'error' | 'paused';
 
-export interface WhatsAppConfig {
-  evolutionApiUrl: string;
-  apiKey: string;
-}
-
 export interface WhatsAppInstanceData {
   qrcode?: string;
   state: WhatsAppState;

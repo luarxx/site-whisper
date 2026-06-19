@@ -2,7 +2,6 @@ import { useEffect, useCallback } from 'react';
 import { Smartphone, QrCode, Link2, Unlink, CheckCircle2, AlertCircle, Loader2, Pause, Play, RefreshCw } from 'lucide-react';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
-import { Field } from '@/components/ui/Field';
 import { Badge } from '@/components/ui/Badge';
 import { useAppStore } from '@/store/useAppStore';
 
@@ -15,11 +14,9 @@ const STATE_LABEL: Record<string, { label: string; tone: 'success' | 'danger' | 
 };
 
 export function WhatsAppPanel() {
-  const whatsAppConfig = useAppStore((s) => s.whatsAppConfig);
   const whatsAppState = useAppStore((s) => s.whatsAppState);
   const whatsAppQrCode = useAppStore((s) => s.whatsAppQrCode);
   const whatsAppError = useAppStore((s) => s.whatsAppError);
-  const setWhatsAppConfig = useAppStore((s) => s.setWhatsAppConfig);
   const createWhatsAppInstance = useAppStore((s) => s.createWhatsAppInstance);
   const checkWhatsAppStatus = useAppStore((s) => s.checkWhatsAppStatus);
   const pauseWhatsApp = useAppStore((s) => s.pauseWhatsApp);
@@ -67,7 +64,6 @@ export function WhatsAppPanel() {
   const isConnected = whatsAppState === 'connected';
   const isPaused = whatsAppState === 'paused';
   const isConnecting = whatsAppState === 'connecting';
-  const isBusy = isConnected || isConnecting || isPaused;
   const status = STATE_LABEL[whatsAppState] ?? STATE_LABEL.idle;
 
   const qrSrc = whatsAppQrCode
@@ -85,29 +81,9 @@ export function WhatsAppPanel() {
         padded
       >
         <div className="space-y-5">
-          <Field label="URL da Evolution API" htmlFor="evolution-url">
-            <input
-              id="evolution-url"
-              type="text"
-              value={whatsAppConfig.evolutionApiUrl}
-              onChange={(e) => setWhatsAppConfig({ evolutionApiUrl: e.target.value })}
-              placeholder="http://localhost:8080"
-              disabled={isBusy}
-              className="h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-900 placeholder-slate-400 transition-colors hover:border-slate-300 focus:border-brand-400 focus:outline-none focus:ring-2 focus:ring-brand-400/20 disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-500"
-            />
-          </Field>
-
-          <Field label="API Key" htmlFor="evolution-key">
-            <input
-              id="evolution-key"
-              type="password"
-              value={whatsAppConfig.apiKey}
-              onChange={(e) => setWhatsAppConfig({ apiKey: e.target.value })}
-              placeholder="Chave de API da Evolution"
-              disabled={isBusy}
-              className="h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-900 placeholder-slate-400 transition-colors hover:border-slate-300 focus:border-brand-400 focus:outline-none focus:ring-2 focus:ring-brand-400/20 disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-500"
-            />
-          </Field>
+          <p className="text-sm text-slate-500">
+            A conexão utiliza a Evolution API configurada no servidor. Clique em <strong>Conectar</strong> para iniciar.
+          </p>
 
           <div className="flex items-center gap-3">
             {isConnected && (
@@ -154,7 +130,7 @@ export function WhatsAppPanel() {
                   onClick={handleConnect}
                   loading={isConnecting}
                   leftIcon={<Link2 className="h-4 w-4" />}
-                  disabled={!whatsAppConfig.apiKey || isConnecting}
+                  disabled={isConnecting}
                 >
                   {isConnecting ? 'Conectando...' : 'Conectar'}
                 </Button>

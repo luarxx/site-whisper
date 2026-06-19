@@ -24,6 +24,30 @@ Registro de bugs encontrados, causas raiz e solucoes aplicadas. O agente deve co
 
 ## Historico
 
+### 2026-06-19 WhatsApp status retorna "idle" mesmo conectado (Evolution API v2.3.7)
+
+**Sintoma:** O endpoint `GET /whatsapp/instance` retornava `{"state":"idle"}` apesar da instância estar conectada (`connectionStatus: "open"` na Evolution API). O frontend mostrava "Desconectado" e o QR Code aparecia desnecessariamente.
+
+**Causa:** A Evolution API v2.3.7 retorna o estado da conexão aninhado: `{"instance": {"state": "open"}}`. A função `_extract_whatsapp_state()` só verificava `data.get("state")` no nível raiz, que retornava `None` → fallback `"close"` → mapeado para `"idle"`.
+
+**Solucao:** Adicionar verificação para `data["instance"]["state"]` e `data["instance"]["connectionState"]` na função `_extract_whatsapp_state()`.
+
+**Arquivos afetados:** `main.py`
+
+**Tags:** `backend` `api` `whatsapp`
+
+### 2026-06-19 Frontend expõe campos de URL e API Key da Evolution API
+
+**Sintoma:** O painel WhatsApp mostrava campos editáveis para "URL da Evolution API" e "API Key", exigindo que o usuário preenchesse manualmente. Esses valores já estavam configurados no backend (`whisper_config.json`) e não deveriam ser expostos.
+
+**Causa:** Os campos foram adicionados ao `WhatsAppPanel.tsx` originalmente para flexibilidade, mas a configuração correta já vive no backend (variáveis globais + `whisper_config.json`).
+
+**Solucao:** Removidos os campos do frontend,简化 `WhatsAppConfig` (removido do store, types e API client), e ajustado `POST /whatsapp/instance` no backend para aceitar body vazio (`Body(default={})`). O endpoint continua aceitando `evolutionApiUrl`/`apiKey` no body para backward compatibility.
+
+**Arquivos afetados:** `src/components/WhatsAppPanel.tsx`, `src/store/useAppStore.ts`, `src/services/api.ts`, `src/types/index.ts`, `main.py`
+
+**Tags:** `frontend` `backend` `api` `whatsapp` `ui`
+
 ### 2026-06-19 Áudio chega no webhook mas é ignorado por messageType="audioMessage"
 
 **Sintoma:** Webhook é recebido pelo Whisper (retorna 200), mas o áudio nunca é baixado/transcrito. Logs mostram o evento `messages.upsert` com `audioMessage` mas nenhuma ação subsequente.

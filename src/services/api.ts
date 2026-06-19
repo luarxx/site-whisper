@@ -1,5 +1,5 @@
 import axios, { AxiosError, type AxiosInstance } from 'axios';
-import type { LogLine, TranscribeResponse, WhisperConfig, WhatsAppConfig, WhatsAppInstanceData, WhatsAppStatusResponse } from '@/types';
+import type { LogLine, TranscribeResponse, WhisperConfig, WhatsAppInstanceData, WhatsAppStatusResponse } from '@/types';
 
 export class ApiClient {
   private instance: AxiosInstance;
@@ -190,10 +190,10 @@ export class ApiClient {
 
   /**
    * Cria uma instância na Evolution API e retorna o QR Code.
-   * @param config - Configuração da Evolution API (URL e chave)
+   * A configuração (URL, API key) já está no backend.
    */
-  async createWhatsAppInstance(config: WhatsAppConfig): Promise<WhatsAppInstanceData> {
-    const { data } = await this.instance.post<WhatsAppInstanceData>('/whatsapp/instance', config);
+  async createWhatsAppInstance(): Promise<WhatsAppInstanceData> {
+    const { data } = await this.instance.post<WhatsAppInstanceData>('/whatsapp/instance');
     return data;
   }
 

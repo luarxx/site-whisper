@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { getApiClient } from '@/services/api';
-import type { LogLine, WhisperConfig, WhatsAppConfig, WhatsAppState } from '@/types';
+import type { LogLine, WhisperConfig, WhatsAppState } from '@/types';
 
 interface Toast {
   id: number;
@@ -32,7 +32,6 @@ interface AppState {
 
   transcribeOpts: TranscribeOptions;
 
-  whatsAppConfig: WhatsAppConfig;
   whatsAppState: WhatsAppState;
   whatsAppQrCode: string | null;
   whatsAppError: string | null;
@@ -54,7 +53,6 @@ interface AppState {
   pauseWhatsApp: () => Promise<void>;
   resumeWhatsApp: () => Promise<void>;
   disconnectWhatsApp: () => Promise<void>;
-  setWhatsAppConfig: (patch: Partial<WhatsAppConfig>) => void;
 }
 
 let toastIdCounter = 0;
@@ -83,10 +81,6 @@ export const useAppStore = create<AppState>()(
       logs: [],
       isLoadingLogs: false,
 
-      whatsAppConfig: {
-        evolutionApiUrl: 'http://localhost:8080',
-        apiKey: '',
-      },
       whatsAppState: 'idle',
       whatsAppQrCode: null,
       whatsAppError: null,
@@ -237,16 +231,11 @@ export const useAppStore = create<AppState>()(
     get().pushToast({ type: 'info', message: 'Transcrição cancelada.' });
   },
 
-  setWhatsAppConfig: (patch) => {
-    set((state) => ({ whatsAppConfig: { ...state.whatsAppConfig, ...patch } }));
-  },
-
   createWhatsAppInstance: async () => {
-    const { whatsAppConfig } = get();
     const client = getApiClient();
     set({ whatsAppState: 'connecting', whatsAppQrCode: null, whatsAppError: null });
     try {
-      const data = await client.createWhatsAppInstance(whatsAppConfig);
+      const data = await client.createWhatsAppInstance();
       set({
         whatsAppState: data.state,
         whatsAppQrCode: data.qrcode ?? null,
@@ -352,7 +341,6 @@ export const useAppStore = create<AppState>()(
       partialize: (state) => ({
         transcribeOpts: state.transcribeOpts,
         config: state.config,
-        whatsAppConfig: state.whatsAppConfig,
       }),
     },
   ),
