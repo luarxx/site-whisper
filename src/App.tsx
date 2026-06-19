@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react';
 import { Sidebar, type SectionId } from '@/components/Sidebar';
-import { StatusCard } from '@/components/StatusCard';
 import { AudioUploader } from '@/components/AudioUploader';
 import { ConfigForm } from '@/components/ConfigForm';
 import { LogViewer } from '@/components/LogViewer';
@@ -8,10 +7,10 @@ import { WhatsAppPanel } from '@/components/WhatsAppPanel';
 import { Toaster } from '@/components/ui/Toaster';
 import { useAppStore } from '@/store/useAppStore';
 
-const SECTION_IDS: SectionId[] = ['status', 'transcribe', 'config', 'logs', 'whatsapp'];
+const SECTION_IDS: SectionId[] = ['transcribe', 'config', 'logs', 'whatsapp'];
 
 export function App() {
-  const [active, setActive] = useState<SectionId>('status');
+  const [active, setActive] = useState<SectionId>('transcribe');
   const checkConnection = useAppStore((s) => s.checkConnection);
   const refreshConfig = useAppStore((s) => s.refreshConfig);
   const dismissToast = useAppStore((s) => s.dismissToast);
@@ -41,7 +40,7 @@ export function App() {
 
       if (isInput || e.ctrlKey || e.metaKey || e.altKey) return;
 
-      if (e.key === '1' || e.key === '2' || e.key === '3' || e.key === '4' || e.key === '5') {
+      if (e.key === '1' || e.key === '2' || e.key === '3' || e.key === '4') {
         const idx = Number(e.key) - 1;
         if (SECTION_IDS[idx]) {
           setActive(SECTION_IDS[idx]);
@@ -65,12 +64,6 @@ export function App() {
             </h1>
             <p className="text-sm text-slate-500">{getDescription(active)}</p>
           </header>
-
-          {active === 'status' && (
-            <div className="space-y-6 animate-fade-in">
-              <StatusCard />
-            </div>
-          )}
 
           {active === 'transcribe' && (
             <div className="space-y-6 animate-fade-in">
@@ -109,8 +102,6 @@ export function App() {
  */
 function getTitle(id: SectionId): string {
   switch (id) {
-    case 'status':
-      return 'Conexão & Status';
     case 'transcribe':
       return 'Transcrição de Áudio';
     case 'config':
@@ -128,8 +119,6 @@ function getTitle(id: SectionId): string {
  */
 function getDescription(id: SectionId): string {
   switch (id) {
-    case 'status':
-      return 'Configure o endpoint da API OpenAI-compatible e verifique a conexão.';
     case 'transcribe':
       return 'Faça upload de um áudio e receba a transcrição em segundos.';
     case 'config':

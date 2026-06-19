@@ -16,3 +16,4 @@ acessar-vps.bat
 whisper_config.json
 .whisper_startup
 temp_*
+*.openchamber.backup

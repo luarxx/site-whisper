@@ -17,7 +17,6 @@ interface TranscribeOptions {
 }
 
 interface AppState {
-  apiBaseUrl: string;
   isOnline: boolean;
   isConnecting: boolean;
   transcription: string;
@@ -38,7 +37,6 @@ interface AppState {
   whatsAppQrCode: string | null;
   whatsAppError: string | null;
 
-  setApiBaseUrl: (url: string) => void;
   setTranscribeOpts: (patch: Partial<TranscribeOptions>) => void;
   checkConnection: () => Promise<void>;
   setTranscription: (text: string) => void;
@@ -69,7 +67,6 @@ const DEFAULT_OPTS: TranscribeOptions = {
 export const useAppStore = create<AppState>()(
   persist(
     (set, get) => ({
-      apiBaseUrl: import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8000',
       isOnline: false,
       isConnecting: false,
       transcription: '',
@@ -96,24 +93,13 @@ export const useAppStore = create<AppState>()(
         set((state) => ({ transcribeOpts: { ...state.transcribeOpts, ...patch } }));
       },
 
-      /**
-       * Define a URL base da API e reconfigura o cliente HTTP.
-       * @param url - URL do endpoint (ex: http://localhost:8000)
-       */
-      setApiBaseUrl: (url) => {
-        console.log(`[Store] setApiBaseUrl -> "${url}"`);
-        set({ apiBaseUrl: url });
-        getApiClient(url);
-      },
-
   /**
    * Testa a conectividade com a API (sem parâmetros).
    * Atualiza isOnline e isConnecting automaticamente.
    */
   checkConnection: async () => {
-    const { apiBaseUrl } = get();
-    console.log(`[Store] checkConnection — testando "${apiBaseUrl}"`);
-    const client = getApiClient(apiBaseUrl);
+    console.log('[Store] checkConnection — testando conectividade');
+    const client = getApiClient();
     set({ isConnecting: true });
     try {
       const ok = await client.health();
@@ -161,8 +147,7 @@ export const useAppStore = create<AppState>()(
   },
 
   refreshConfig: async () => {
-    const { apiBaseUrl } = get();
-    const client = getApiClient(apiBaseUrl);
+    const client = getApiClient();
     try {
       const newConfig = await client.getConfig();
       const { config, configDraft } = get();
@@ -184,9 +169,9 @@ export const useAppStore = create<AppState>()(
   },
 
   saveConfig: async () => {
-    const { apiBaseUrl, configDraft } = get();
+    const { configDraft } = get();
     if (!configDraft) return;
-    const client = getApiClient(apiBaseUrl);
+    const client = getApiClient();
     try {
       await client.saveConfig(configDraft);
       set({ config: structuredClone(configDraft) });
@@ -199,8 +184,8 @@ export const useAppStore = create<AppState>()(
   },
 
   refreshLogs: async () => {
-    const { apiBaseUrl, pushToast } = get();
-    const client = getApiClient(apiBaseUrl);
+    const { pushToast } = get();
+    const client = getApiClient();
     set({ isLoadingLogs: true });
     try {
       const logs = await client.getLogs();
@@ -214,8 +199,7 @@ export const useAppStore = create<AppState>()(
   },
 
   startTranscription: async (file, opts) => {
-    const { apiBaseUrl } = get();
-    const client = getApiClient(apiBaseUrl);
+    const client = getApiClient();
     const controller = new AbortController();
     set({
       isTranscribing: true,
@@ -256,8 +240,8 @@ export const useAppStore = create<AppState>()(
   },
 
   createWhatsAppInstance: async () => {
-    const { apiBaseUrl, whatsAppConfig } = get();
-    const client = getApiClient(apiBaseUrl);
+    const { whatsAppConfig } = get();
+    const client = getApiClient();
     set({ whatsAppState: 'connecting', whatsAppQrCode: null, whatsAppError: null });
     try {
       const data = await client.createWhatsAppInstance(whatsAppConfig);
@@ -275,8 +259,7 @@ export const useAppStore = create<AppState>()(
   },
 
   checkWhatsAppStatus: async () => {
-    const { apiBaseUrl } = get();
-    const client = getApiClient(apiBaseUrl);
+    const client = getApiClient();
     try {
       const data = await client.getWhatsAppStatus();
       set({
@@ -289,8 +272,7 @@ export const useAppStore = create<AppState>()(
   },
 
   disconnectWhatsApp: async () => {
-    const { apiBaseUrl } = get();
-    const client = getApiClient(apiBaseUrl);
+    const client = getApiClient();
     try {
       await client.disconnectWhatsApp();
       set({
@@ -308,25 +290,15 @@ export const useAppStore = create<AppState>()(
 }),
     {
       name: 'whisper-store',
-      version: 1,
+      version: 2,
       migrate: (persisted, version) => {
-        if (version === 0) {
-          return {
-            ...(persisted as Record<string, unknown>),
-            apiBaseUrl: import.meta.env.VITE_API_BASE_URL ?? '',
-          };
+        const data = persisted as Record<string, unknown>;
+        if (version < 2) {
+          delete data.apiBaseUrl;
         }
-        return persisted as AppState;
-      },
-      merge: (persisted, current) => {
-        const merged = { ...current, ...(persisted as Partial<AppState>) };
-        if (!import.meta.env.VITE_API_BASE_URL) {
-          merged.apiBaseUrl = '';
-        }
-        return merged as AppState;
+        return data as unknown as AppState;
       },
       partialize: (state) => ({
-        apiBaseUrl: state.apiBaseUrl,
         transcribeOpts: state.transcribeOpts,
         config: state.config,
         whatsAppConfig: state.whatsAppConfig,

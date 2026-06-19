@@ -55,20 +55,6 @@ export class ApiClient {
   }
 
   /**
-   * Atualiza a URL base da instância.
-   * @param baseURL - Nova URL base
-   */
-  setBaseURL(baseURL: string): void {
-    const normalized = this.normalize(baseURL);
-    console.log(`[API] Atualizando baseURL para: "${normalized}"`);
-    this.instance.defaults.baseURL = normalized;
-  }
-
-  getBaseURL(): string {
-    return this.instance.defaults.baseURL ?? '';
-  }
-
-  /**
    * Remove a barra final da URL.
    * @param url - URL para normalizar
    */
@@ -229,16 +215,10 @@ export class ApiClient {
 
 let _client: ApiClient | null = null;
 
-/**
- * Retorna (ou cria) a instância singleton do ApiClient.
- * @param baseURL - URL base opcional para reconfigurar o cliente
- */
-export function getApiClient(baseURL?: string): ApiClient {
+export function getApiClient(): ApiClient {
   if (!_client) {
-    const envURL = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8000';
-    _client = new ApiClient(baseURL ?? envURL);
-  } else if (baseURL !== undefined) {
-    _client.setBaseURL(baseURL);
+    const baseURL = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8000';
+    _client = new ApiClient(baseURL);
   }
   return _client;
 }

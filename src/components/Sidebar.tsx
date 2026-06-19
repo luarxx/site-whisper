@@ -1,6 +1,5 @@
 import { useState } from 'react';
 import {
-  Activity,
   AudioWaveform,
   Sliders,
   Terminal,
@@ -12,21 +11,20 @@ import {
 } from 'lucide-react';
 import { cn } from '@/utils';
 
-export type SectionId = 'status' | 'transcribe' | 'config' | 'logs' | 'whatsapp';
+export type SectionId = 'transcribe' | 'config' | 'logs' | 'whatsapp';
 
 interface NavItem {
   id: SectionId;
   label: string;
   description: string;
-  icon: typeof Activity;
+  icon: typeof AudioWaveform;
 }
 
 const NAV_ITEMS: NavItem[] = [
-  { id: 'status', label: 'Conexão', description: 'Endpoint da API', icon: Activity },
   { id: 'transcribe', label: 'Transcrição', description: 'Áudio para texto', icon: AudioWaveform },
-  { id: 'whatsapp', label: 'WhatsApp', description: 'Vincular ao WhatsApp', icon: Smartphone },
   { id: 'config', label: 'Configurações', description: 'Modelo e parâmetros', icon: Sliders },
   { id: 'logs', label: 'Logs', description: 'Saída do servidor', icon: Terminal },
+  { id: 'whatsapp', label: 'WhatsApp', description: 'Vincular ao WhatsApp', icon: Smartphone },
 ];
 
 interface SidebarProps {

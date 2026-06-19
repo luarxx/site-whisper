@@ -31,7 +31,7 @@ npm install
 
 # 2. Copiar variáveis de ambiente
 cp .env.example .env
-# edite VITE_API_BASE_URL=http://<IP_DA_VPS>:8000
+# VITE_API_BASE_URL="" (producao = same-origin; desenvolvimento = http://localhost:8000)
 
 # 3. Dev server
 npm run dev          # http://localhost:5173
@@ -55,7 +55,6 @@ src/
 │   │   ├── Slider.tsx
 │   │   └── Toaster.tsx
 │   ├── Sidebar.tsx
-│   ├── StatusCard.tsx
 │   ├── ConfigForm.tsx
 │   ├── AudioUploader.tsx
 │   └── LogViewer.tsx

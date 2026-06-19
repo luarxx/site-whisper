@@ -35,13 +35,12 @@ Logs temporarios `.vite-dev.log`, `.vite-dev.err`, `.vite-dev.log.err` sao ruido
 ## Code Map
 
 - `src/main.tsx`: entry point; monta `<App />` no `#root`.
-- `src/App.tsx`: shell da aplicacao, roteamento por secao (`status` | `transcribe` | `config` | `logs`), hotkeys 1-4, polling de conexao a cada 30s.
+- `src/App.tsx`: shell da aplicacao, roteamento por secao (`transcribe` | `config` | `logs` | `whatsapp`), hotkeys 1-4, polling de conexao a cada 30s.
 - `src/index.css`: tokens Tailwind, keyframes (`pulse-soft`, `fade-in`, `blink`), scrollbar.
 - `src/services/api.ts`: `ApiClient` (wrapper Axios) com `health`, `transcribe`, `getConfig`, `saveConfig`, `getLogs`; exporta `getApiClient()` (singleton).
-- `src/store/useAppStore.ts`: estado global Zustand (apiBaseUrl, isOnline, transcription, config, logs, toasts) e todas as acoes.
+- `src/store/useAppStore.ts`: estado global Zustand (isOnline, transcription, config, logs, toasts) e todas as acoes.
 - `src/types/index.ts`: contratos TS (`WhisperConfig`, `ApiStatus`, `LogLine`, `TranscribeResponse`, `ApiError`) e enums (`WhisperModel`, `Device`, `ComputeType`, `LanguageCode`) + listas (`LANGUAGES`, `MODELS`, `DEVICES`, `COMPUTE_TYPES`).
 - `src/components/Sidebar.tsx`: navegacao lateral, secao ativa, hamburger mobile.
-- `src/components/StatusCard.tsx`: badge online/offline, latencia, uptime, recursos (CPU/GPU/RAM) e edicao da URL base da API.
 - `src/components/AudioUploader.tsx`: drop zone, envio do arquivo para `/transcribe`, exibicao e copia do resultado.
 - `src/components/ConfigForm.tsx`: formulario de `WhisperConfig` (model, device, compute_type, language, temperature, beam_size, vad_filter).
 - `src/components/LogViewer.tsx`: terminal com auto-refresh, filtro, autoscroll, pausa e botao limpar.
@@ -113,13 +112,6 @@ Documentacao auxiliar em `docs/`. Nao ha testes automatizados configurados (`pac
 
 ## Feature Routing
 
-Para Status & Monitoramento:
-- Frontend: `StatusCard`, polling de 30s em `App.tsx`.
-- Store: `checkConnection`, `isOnline`, `isConnecting`, `apiBaseUrl`.
-- Service: `ApiClient.health()` (tenta `/health` e cai em `/docs`).
-- Endpoints: `GET /status` (opcional) + `GET /health` ou `GET /docs` como health check.
-- Edicao da URL base da API e persistencia: `useAppStore.setApiBaseUrl` + middleware `persist` do Zustand.
-
 Para Configuracao do Modelo:
 - Frontend: `ConfigForm`.
 - Store: `refreshConfig`, `updateConfigDraft`, `saveConfig`, `config`, `configDraft`.
@@ -145,18 +137,13 @@ Para Toasts / notificacoes:
 - Store: `pushToast`, `dismissToast`, `toasts`. Auto-dismiss em 4500ms.
 - Tons suportados: `success` | `error` | `info` (mapeados em `Badge`/`Toaster`).
 
-Para URL base da API:
-- Editada em `StatusCard`, definida por `VITE_API_BASE_URL` em build time.
-- Persistida em runtime via `persist` do Zustand (`localStorage`).
-- Singleton do `ApiClient` reconfigurado em `setApiBaseUrl`.
-
 ---
 
 ## Critical Rules
 
 - TypeScript strict (`strict: true` em `tsconfig.app.json`); respeitar tambem `noUnusedLocals`, `noUnusedParameters`, `noFallthroughCasesInSwitch`, `noUncheckedSideEffectImports`, `noImplicitOverride`.
 - Preferir exports nomeados.
-- Portugues para UI e dominio: "Conexao & Status", "Transcricao", "Configuracoes", "Logs", nomes de variaveis visiveis ao usuario.
+- Portugues para UI e dominio: "Transcricao", "Configuracoes", "Logs", nomes de variaveis visiveis ao usuario.
 - Ingles para codigo generico: tipos, hooks, utilitarios, acoes do store, chaves internas.
 - Nao usar comentarios em linha no codigo-fonte salvo real necessidade. JSDoc curto e permitido em funcoes publicas do `ApiClient` e do store.
 - Nao introduzir nova dependencia sem justificativa; preferir primitives em `src/components/ui/`.
