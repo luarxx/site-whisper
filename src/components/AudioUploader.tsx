@@ -223,11 +223,13 @@ export function AudioUploader() {
         )}
 
         {transcribeError && state && !isTranscribing && (
-          <div className="flex items-start gap-3 rounded-xl border border-rose-200 bg-rose-50/60 p-3 animate-fade-in">
-            <AlertTriangle className="h-4 w-4 shrink-0 text-rose-500 mt-0.5" />
-            <div className="min-w-0 flex-1">
-              <p className="text-sm font-medium text-rose-800">Falha na transcrição</p>
-              <p className="text-xs text-rose-600">{transcribeError}</p>
+          <div className="flex flex-wrap items-start gap-3 rounded-xl border border-rose-200 bg-rose-50/60 p-3 animate-fade-in">
+            <div className="flex items-start gap-3 min-w-0 flex-1">
+              <AlertTriangle className="h-4 w-4 shrink-0 text-rose-500 mt-0.5" />
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-medium text-rose-800">Falha na transcrição</p>
+                <p className="text-xs text-rose-600">{transcribeError}</p>
+              </div>
             </div>
             <Button
               variant="secondary"
@@ -240,8 +242,8 @@ export function AudioUploader() {
           </div>
         )}
 
-        <div className="flex items-center justify-between gap-2">
-          <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <Button
               variant="ghost"
               size="sm"
@@ -259,25 +261,27 @@ export function AudioUploader() {
             )}
           </div>
 
-          <Button
-            onClick={handleTranscribe}
-            loading={isTranscribing}
-            disabled={!state || !isOnline}
-            leftIcon={isTranscribing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
-          >
-            {isTranscribing ? 'Processando…' : 'Processar áudio'}
-          </Button>
-
-          {isTranscribing && (
+          <div className="flex items-center gap-2">
             <Button
-              variant="danger"
-              size="md"
-              onClick={cancelTranscription}
-              leftIcon={<Square className="h-4 w-4" />}
+              onClick={handleTranscribe}
+              loading={isTranscribing}
+              disabled={!state || !isOnline}
+              leftIcon={isTranscribing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
             >
-              Cancelar
+              {isTranscribing ? 'Processando…' : 'Processar áudio'}
             </Button>
-          )}
+
+            {isTranscribing && (
+              <Button
+                variant="danger"
+                size="md"
+                onClick={cancelTranscription}
+                leftIcon={<Square className="h-4 w-4" />}
+              >
+                Cancelar
+              </Button>
+            )}
+          </div>
         </div>
 
         {showOpts && (

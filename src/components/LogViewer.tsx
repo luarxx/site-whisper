@@ -63,7 +63,7 @@ export function LogViewer() {
       description="Saída do main.py rodando na VPS"
       icon={<Terminal className="h-5 w-5" />}
       actions={
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-1.5">
           <Badge tone={isOnline ? 'success' : 'neutral'} dot pulse={isOnline && autoRefresh}>
             {isOnline ? 'Live' : 'Pausado'}
           </Badge>
@@ -71,7 +71,7 @@ export function LogViewer() {
             value={filter}
             onChange={(e) => setFilter(e.target.value)}
             placeholder="Filtrar…"
-            className="h-8 w-32 rounded-lg border border-slate-200 bg-white px-2.5 text-xs shadow-soft focus:border-brand-400 focus:outline-none focus:ring-2 focus:ring-brand-100 sm:w-44"
+            className="h-8 w-28 rounded-lg border border-slate-200 bg-white px-2.5 text-xs shadow-soft focus:border-brand-400 focus:outline-none focus:ring-2 focus:ring-brand-100 sm:w-36"
           />
           <Button
             variant="secondary"
@@ -80,7 +80,7 @@ export function LogViewer() {
             loading={isLoadingLogs}
             leftIcon={<RefreshCw className="h-3.5 w-3.5" />}
           >
-            Atualizar
+            <span className="hidden sm:inline">Atualizar</span>
           </Button>
           <Button
             variant="secondary"
@@ -88,7 +88,7 @@ export function LogViewer() {
             onClick={() => setAutoRefresh((v) => !v)}
             leftIcon={autoRefresh ? <Pause className="h-3.5 w-3.5" /> : <Play className="h-3.5 w-3.5" />}
           >
-            {autoRefresh ? 'Pausar' : 'Retomar'}
+            <span className="hidden sm:inline">{autoRefresh ? 'Pausar' : 'Retomar'}</span>
           </Button>
           <Button
             variant="ghost"

@@ -56,9 +56,9 @@ export function App() {
     <div className="flex h-full min-h-screen bg-slate-50">
       <Sidebar active={active} onSelect={setActive} />
 
-      <main className="flex-1 overflow-y-auto">
+      <main className="min-w-0 flex-1 overflow-y-auto pb-safe">
         <div className="mx-auto w-full max-w-6xl space-y-6 px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
-          <header className="flex flex-col gap-1 pt-10 lg:pt-0">
+          <header className="flex flex-col gap-1 pt-[max(2.5rem,env(safe-area-inset-top,0px))] lg:pt-0">
             <h1 className="text-2xl font-semibold tracking-tight text-slate-900 sm:text-3xl">
               {getTitle(active)}
             </h1>

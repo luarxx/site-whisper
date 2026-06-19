@@ -155,7 +155,7 @@ export function ConfigForm() {
 
       </div>
 
-      <footer className="mt-6 flex flex-col-reverse items-stretch gap-2 border-t border-slate-100 pt-4 sm:flex-row sm:items-center sm:justify-end">
+      <footer className="mt-6 flex flex-col items-stretch gap-2 border-t border-slate-100 pt-4 sm:flex-row sm:items-center sm:justify-end">
         <Button
           variant="secondary"
           onClick={handleReset}

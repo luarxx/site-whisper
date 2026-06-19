@@ -44,7 +44,7 @@ export function Sidebar({ active, onSelect }: SidebarProps) {
     <>
       <button
         onClick={() => setOpen((v) => !v)}
-        className="fixed left-4 top-4 z-40 inline-flex h-10 w-10 items-center justify-center rounded-xl bg-white shadow-card ring-1 ring-slate-200 lg:hidden"
+        className="fixed left-4 top-4 z-40 inline-flex h-11 w-11 items-center justify-center rounded-xl bg-white shadow-card ring-1 ring-slate-200 lg:hidden"
         aria-label={open ? 'Fechar menu' : 'Abrir menu'}
       >
         {open ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
@@ -61,6 +61,7 @@ export function Sidebar({ active, onSelect }: SidebarProps) {
       <aside
         className={cn(
           'fixed inset-y-0 left-0 z-30 flex w-72 flex-col border-r border-slate-200 bg-white px-4 py-6',
+          'pt-[max(1.5rem,env(safe-area-inset-top,0px))] pb-[max(1.5rem,env(safe-area-inset-bottom,0px))]',
           'transition-transform duration-300 lg:static lg:translate-x-0',
           open ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
         )}
@@ -87,7 +88,7 @@ export function Sidebar({ active, onSelect }: SidebarProps) {
                   setOpen(false);
                 }}
                 className={cn(
-                  'group flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left transition-colors',
+                  'group flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left transition-colors',
                   isActive
                     ? 'bg-brand-50 text-brand-700 ring-1 ring-inset ring-brand-100'
                     : 'text-slate-600 hover:bg-slate-50'

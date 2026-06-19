@@ -38,7 +38,7 @@ export function Card({
       )}
     >
       {(title || actions) && (
-        <header className="flex items-start justify-between gap-4 border-b border-slate-100 px-5 py-4">
+        <header className="flex flex-col gap-3 border-b border-slate-100 p-4 sm:flex-row sm:items-start sm:justify-between sm:px-5 sm:py-4">
           <div className="flex items-start gap-3">
             {icon && (
               <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-brand-50 text-brand-600">
@@ -54,7 +54,7 @@ export function Card({
               )}
             </div>
           </div>
-          {actions && <div className="flex shrink-0 items-center gap-2">{actions}</div>}
+          {actions && <div className="flex flex-wrap items-center gap-1.5">{actions}</div>}
         </header>
       )}
       <div className={cn(padded ? 'p-5' : '')}>{children}</div>

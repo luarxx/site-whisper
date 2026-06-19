@@ -118,11 +118,11 @@ export function WhatsAppPanel() {
           padded
         >
           <div className="flex flex-col items-center gap-4">
-            <div className="rounded-2xl border-2 border-slate-200 bg-white p-4 shadow-soft">
+            <div className="rounded-2xl border-2 border-slate-200 bg-white p-2 sm:p-4 shadow-soft">
               <img
                 src={`data:image/png;base64,${whatsAppQrCode}`}
                 alt="QR Code do WhatsApp"
-                className="h-64 w-64"
+                className="h-48 w-48 sm:h-64 sm:w-64"
               />
             </div>
             <p className="flex items-center gap-2 text-sm text-slate-500">
