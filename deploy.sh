@@ -22,8 +22,8 @@ rsync -avz --delete dist/ "${REMOTE_USER}@${REMOTE_HOST}:${REMOTE_DIR}/static/"
 echo "🐍 Enviando backend (main.py)..."
 rsync -avz main.py "${REMOTE_USER}@${REMOTE_HOST}:${REMOTE_DIR}/main.py"
 
-echo "🔄 Reiniciando serviço whisper..."
-ssh "${REMOTE_USER}@${REMOTE_HOST}" "sudo systemctl restart whisper"
+echo "🔄 Reiniciando serviço whisper via PM2..."
+ssh "${REMOTE_USER}@${REMOTE_HOST}" "pm2 restart whisper-api"
 
 echo "✅ Deploy concluído."
 echo "🔗 http://${REMOTE_HOST}:8000"

@@ -18,3 +18,4 @@ whisper_config.json
 temp_*
 *.openchamber.backup
 TUDO-SOBRE-O-PROJETO.md
+ecosystem.config.cjs

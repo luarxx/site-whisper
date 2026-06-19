@@ -177,7 +177,7 @@ Frontend:
 Backend / VPS:
 - `main.py` (raiz) e o backend FastAPI. Para rodar localmente: criar venv, `pip install fastapi uvicorn faster-whisper psutil python-multipart` (ou usar `requirements.txt` se existir), `python main.py` ou `uvicorn main:app --host 0.0.0.0 --port 8000`.
 - Para testar na VPS: seguir `docs/comandos-vps.md` (curl em `/health`, `/v1/audio/transcriptions`, `/logs`).
-- Apos QUALQUER alteracao em `main.py`, rebuild do servico: `sudo systemctl restart whisper` (ver `docs/comandos-vps.md`).
+- Apos QUALQUER alteracao em `main.py`, rebuild do servico: `pm2 restart whisper-api` (ver `docs/comandos-vps.md`).
 
 Docs-only:
 - Nao rodar build/testes salvo se solicitado.

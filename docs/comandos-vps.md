@@ -6,7 +6,7 @@ O deploy é automático ao fazer push para `main`. O workflow `.github/workflows
 1. Faz build do frontend (`dist/`)
 2. Envia `dist/` → `~/whisper-api/static/`
 3. Envia `main.py` → `~/whisper-api/`
-4. Reinicia o serviço `whisper`
+4. Reinicia o serviço `whisper-api` via PM2
 
 **Secrets necessários no GitHub** (`Settings > Secrets and variables > Actions`):
 
@@ -36,19 +36,21 @@ scp -r dist/* SEU_USUARIO@SEU_IP:~/whisper-api/static/
 scp main.py SEU_USUARIO@SEU_IP:~/whisper-api/main.py
 
 # Reiniciar
-ssh SEU_USUARIO@SEU_IP "sudo systemctl restart whisper"
+ssh SEU_USUARIO@SEU_IP "pm2 restart whisper-api"
 ```
 
 Acesse em `http://SEU_IP:8000` — o FastAPI serve o frontend React + API no mesmo host.
 
-## Gerenciamento do Serviço (systemd)
+## Gerenciamento do Serviço (PM2)
 
 ```bash
-sudo systemctl start whisper      # Iniciar
-sudo systemctl stop whisper       # Parar
-sudo systemctl restart whisper    # Reiniciar
-sudo systemctl status whisper     # Ver status
-sudo journalctl -u whisper -f     # Ver logs em tempo real
+cd ~/whisper-api && pm2 start ecosystem.config.cjs   # Iniciar
+pm2 stop whisper-api                                  # Parar
+pm2 restart whisper-api                               # Reiniciar
+pm2 status                                            # Listar processos
+pm2 logs whisper-api --lines 50                       # Ver logs recentes
+pm2 logs whisper-api -f                               # Ver logs em tempo real
+pm2 monit                                             # Dashboard interativo (CPU, mem, logs)
 ```
 
 ## Rodar Manualmente (para debug)
@@ -58,6 +60,29 @@ ssh SEU_USUARIO@SEU_IP
 cd ~/whisper-api
 source venv/bin/activate
 python main.py
+```
+
+## PM2 — Comandos Úteis
+
+```bash
+pm2 list                                           # Listar processos
+pm2 logs whisper-api -f                            # Logs em tempo real
+pm2 logs whisper-api --lines 100 --nostream        # Últimas 100 linhas (sem follow)
+pm2 restart whisper-api                            # Reiniciar
+pm2 stop whisper-api                               # Parar
+pm2 delete whisper-api                             # Remover do PM2
+pm2 save                                           # Salvar lista de processos (para restart após reboot)
+pm2 startup systemd -u ubuntu --hp /home/ubuntu    # Configurar PM2 para iniciar com o sistema
+pm2 monit                                          # Dashboard interativo
+```
+
+O PM2 está configurado para iniciar automaticamente com o sistema via `pm2-ubuntu.service`.
+
+### Logs salvos em disco
+
+```
+~/whisper-api/logs/out.log      # stdout
+~/whisper-api/logs/error.log    # stderr
 ```
 
 ## Ver Rotas da API

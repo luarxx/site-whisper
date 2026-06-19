@@ -38,12 +38,12 @@ jobs:
           source: "main.py"
           target: "~/whisper-api/"
 
-      - name: Restart service
+      - name: Restart service (PM2)
         uses: appleboy/ssh-action@v1.2.1
         with:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USERNAME }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
-            sudo systemctl restart whisper
-            sudo systemctl status whisper --no-pager
+            pm2 restart whisper-api
+            pm2 show whisper-api

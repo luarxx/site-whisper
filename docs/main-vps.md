@@ -10,7 +10,7 @@ Código atualizado do serviço de transcrição rodando na VPS (`SEU_IP:8000`).
 | Motor Whisper | [faster-whisper](https://github.com/SYSTRAN/faster-whisper) (CTranslate2) |
 | ASGI Server | Uvicorn |
 | Python | 3.10+ |
-| Infra | Ubuntu 22.04 / systemd |
+| Infra | Ubuntu 22.04 / PM2 (substituiu systemd) |
 ## Código-fonte (`~/whisper-api/main.py`)
 
 > O código-fonte atual está em [`main.py`](../main.py) na raiz do repositório.
@@ -160,15 +160,22 @@ source venv/bin/activate
 uvicorn main:app --host 0.0.0.0 --port 8000
 ```
 
-### Serviço systemd (`whisper.service`)
+### Produção (PM2 — recomendado)
 
 ```bash
-sudo systemctl start whisper
-sudo systemctl stop whisper
-sudo systemctl restart whisper
-sudo systemctl status whisper
-sudo journalctl -u whisper -f
+cd ~/whisper-api
+pm2 start ecosystem.config.cjs     # Iniciar
+pm2 restart whisper-api             # Reiniciar
+pm2 stop whisper-api                # Parar
+pm2 logs whisper-api -f             # Logs em tempo real
+pm2 status                          # Status de todos os processos
 ```
+
+O PM2 está configurado para iniciar automaticamente com o sistema via `pm2-ubuntu.service`.
+Logs salvos em `~/whisper-api/logs/{out,error}.log`.
+
+> **Nota:** O antigo serviço systemd `whisper.service` foi desativado. A migração para PM2
+> ocorreu em jun/2026 para facilitar a visualização de logs com `pm2 logs`.
 
 ## Compatibilidade com o Frontend
 
