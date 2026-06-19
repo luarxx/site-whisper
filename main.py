@@ -457,6 +457,7 @@ async def whatsapp_create_instance(patch: dict):
             "/instance/create",
             json={
                 "instanceName": EVOLUTION_INSTANCE_NAME,
+                "integration": "WHATSAPP-BAILEYS",
                 "token": EVOLUTION_API_KEY,
                 **webhook_data,
                 "qrcode": True,

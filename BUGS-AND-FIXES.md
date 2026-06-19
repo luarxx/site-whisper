@@ -99,3 +99,15 @@ Registro de bugs encontrados, causas raiz e solucoes aplicadas. O agente deve co
 **Arquivos afetados:** `main.py`
 
 **Tags:** `backend` `api`
+
+### 2026-06-19 WhatsApp "Invalid integration" ao criar instância
+
+**Sintoma:** Ao criar instância WhatsApp no dashboard, retorna "Falha ao conectar WhatsApp: Invalid integration". Log da evolution-api: `ERROR [InstanceController] Invalid integration`.
+
+**Causa:** O `main.py` faz `POST /instance/create` sem o campo `integration`. Evolution API v2.3.7 exige este campo (ex: `"WHATSAPP-BAILEYS"`). Sem ele, `channel.controller.init()` retorna `null` → `BadRequestException`.
+
+**Solucao:** Adicionar `"integration": "WHATSAPP-BAILEYS"` ao JSON do `POST /instance/create` em `main.py`.
+
+**Arquivos afetados:** `main.py`
+
+**Tags:** `backend` `api`
