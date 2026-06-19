@@ -599,12 +599,14 @@ async def evolution_webhook(request: Request):
     if not (msg_type in ("audio", "ptt", "audioMessage") or message.get("audioMessage")):
         return {"status": "ignored", "type": msg_type}
 
-    key = message.get("key", {})
+    key = data.get("key", {})
     remote_jid = key.get("remoteJid", "")
     is_from_me = key.get("fromMe", False)
 
     if not is_from_me:
         return {"status": "ignored", "reason": "not_self_chat"}
+
+    number = remote_jid.split("@")[0]
 
     audio_url = None
     audio_message = message.get("audioMessage") or message.get("audio", {})
@@ -615,12 +617,34 @@ async def evolution_webhook(request: Request):
         return {"status": "ignored", "reason": "no_audio_url"}
 
     try:
-        async with httpx.AsyncClient(timeout=300) as client:
-            headers = _evolution_headers()
-            audio_resp = await client.get(audio_url, headers=headers)
-            audio_resp.raise_for_status()
+        audio_bytes = None
 
-        audio_bytes = audio_resp.content
+        if audio_url and ("mmg.whatsapp.net" in audio_url or "media" in audio_url):
+            try:
+                media_resp = await _evolution_proxy(
+                    "POST",
+                    f"/chat/getBase64FromMediaMessage/{EVOLUTION_INSTANCE_NAME}",
+                    json={"message": message},
+                )
+                import base64 as b64mod
+                b64_data = media_resp.get("base64", "")
+                if "," in b64_data:
+                    b64_data = b64_data.split(",", 1)[1]
+                audio_bytes = b64mod.b64decode(b64_data)
+                print(f"[Webhook] Áudio baixado via Evolution API ({len(audio_bytes)} bytes)")
+            except Exception as media_err:
+                print(f"[Webhook] getBase64FromMediaMessage falhou: {media_err}")
+
+        if audio_bytes is None and audio_url:
+            async with httpx.AsyncClient(timeout=300) as client:
+                audio_resp = await client.get(audio_url)
+                audio_resp.raise_for_status()
+            audio_bytes = audio_resp.content
+            print(f"[Webhook] Áudio baixado via URL direta ({len(audio_bytes)} bytes)")
+
+        if audio_bytes is None or len(audio_bytes) == 0:
+            return {"status": "ignored", "reason": "could_not_download_audio"}
+
         temp_path = f"temp_whatsapp_{int(time.time())}.ogg"
         with open(temp_path, "wb") as f:
             f.write(audio_bytes)
@@ -645,12 +669,12 @@ async def evolution_webhook(request: Request):
             "POST",
             f"/message/sendText/{EVOLUTION_INSTANCE_NAME}",
             json={
-                "number": remote_jid,
+                "number": number,
                 "text": f"🗣️ Transcrição:\n\n{full_text}",
             },
         )
 
-        print(f"[Webhook] Transcrição enviada para {remote_jid}")
+        print(f"[Webhook] Transcrição enviada para {number}")
         return {"status": "success", "text": full_text}
 
     except Exception as e:
@@ -660,7 +684,7 @@ async def evolution_webhook(request: Request):
                 "POST",
                 f"/message/sendText/{EVOLUTION_INSTANCE_NAME}",
                 json={
-                    "number": remote_jid,
+                    "number": number,
                     "text": "❌ Erro ao transcrever o áudio. Tente novamente.",
                 },
             )

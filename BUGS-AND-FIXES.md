@@ -48,6 +48,20 @@ Registro de bugs encontrados, causas raiz e solucoes aplicadas. O agente deve co
 
 **Tags:** `frontend` `backend` `api` `whatsapp` `ui`
 
+### 2026-06-19 Áudio do WhatsApp não é transcrito (webhook ignorava self-chat + remoteJid em formato errado)
+
+**Sintoma:** Áudio enviado no self-chat ("Falar comigo mesmo") era recebido pelo webhook (200 OK) mas nunca transcrito. Nenhuma transcrição era enviada de volta.
+
+**Causa:** Dois bugs encadeados:
+1. O código lia `key = message.get("key", {})` mas a Evolution API v2.3.7 retorna `key` no nível `data`, não dentro de `message`. Resultado: `is_from_me` sempre `False` → mensagem ignorada com `"reason": "not_self_chat"`.
+2. O `remote_jid` (formato `5511912255749@s.whatsapp.net`) era enviado diretamente ao `sendText` como `number`, mas a API espera apenas o número de telefone (`5511912255749`).
+
+**Solucao:** (1) Alterar para `key = data.get("key", {})`. (2) Extrair número com `remote_jid.split("@")[0]`. (3) Adicionar download de mídia via `getBase64FromMediaMessage` como fallback para URLs encriptadas do WhatsApp CDN.
+
+**Arquivos afetados:** `main.py`
+
+**Tags:** `backend` `api` `whatsapp` `webhook`
+
 ### 2026-06-19 Áudio chega no webhook mas é ignorado por messageType="audioMessage"
 
 **Sintoma:** Webhook é recebido pelo Whisper (retorna 200), mas o áudio nunca é baixado/transcrito. Logs mostram o evento `messages.upsert` com `audioMessage` mas nenhuma ação subsequente.
