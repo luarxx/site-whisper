@@ -421,12 +421,13 @@ def get_logs(limit: int = 200) -> Dict:
 
 # ── WhatsApp / Evolution API ─────────────────────────────
 def _extract_whatsapp_state(data) -> str:
-    """Extrai o estado da conexao da Evolution API, lidando com varios formatos de resposta."""
     if isinstance(data, str):
         return data
     if isinstance(data, dict):
-        return data.get("state") or data.get("connectionState") or data.get("status") or "connecting"
-    return "connecting"
+        val = data.get("state") or data.get("connectionState")
+        if isinstance(val, str):
+            return val
+    return "close"
 
 
 @app.post("/whatsapp/instance")
@@ -505,7 +506,7 @@ async def whatsapp_status():
             "connecting": "connecting",
             "close": "idle",
             "disconnected": "idle",
-            "qrRead": "connecting",
+            "qrread": "connecting",
             "init": "connecting",
             "authed": "connecting",
             "refused": "connecting",
@@ -513,7 +514,7 @@ async def whatsapp_status():
             "conflict": "connecting",
         }
         return {
-            "state": state_map.get(raw, "connecting"),
+            "state": state_map.get(raw.lower(), "idle"),
             "instanceName": EVOLUTION_INSTANCE_NAME,
         }
     except HTTPException as e:
