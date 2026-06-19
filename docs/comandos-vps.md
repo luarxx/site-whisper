@@ -85,6 +85,17 @@ O PM2 está configurado para iniciar automaticamente com o sistema via `pm2-ubun
 ~/whisper-api/logs/error.log    # stderr
 ```
 
+### Rotação de Logs (pm2-logrotate)
+
+Para evitar que os arquivos de log cresçam indefinidamente:
+
+```bash
+pm2 install pm2-logrotate
+pm2 set pm2-logrotate:max_size 10M
+pm2 set pm2-logrotate:retain 7
+pm2 set pm2-logrotate:compress true
+```
+
 ## Ver Rotas da API
 
 ```bash

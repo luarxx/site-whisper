@@ -5,25 +5,120 @@ import subprocess
 import re
 import glob as glob_module
 import uuid
+import threading
 import httpx
 import psutil
 from typing import List, Dict, Optional
-from fastapi import FastAPI, File, UploadFile, Form, HTTPException, Request, Body
+from fastapi import FastAPI, File, UploadFile, Form, HTTPException, Request, Body, Depends, Security
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from fastapi.security import APIKeyHeader
 from faster_whisper import WhisperModel
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
 import shutil
 
 app = FastAPI(title="Whisper VPS API", version="1.0.0")
+
+limiter = Limiter(key_func=get_remote_address)
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    print("[Shutdown] Aguardando operações em andamento...")
+    import asyncio
+    await asyncio.sleep(3)
+    global _http_client
+    if _http_client and not _http_client.is_closed:
+        await _http_client.aclose()
+        _http_client = None
+    print("[Shutdown] Finalizado.")
 
 # ── CORS ──────────────────────────────────────────────────
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_credentials=True,
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+# ──────────────────────────────────────────────────────────
+
+# ── Autenticação ─────────────────────────────────────────
+WHISPER_API_KEY = os.getenv("WHISPER_API_KEY", "")
+_api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
+
+
+def _verify_api_key(key: Optional[str] = Security(_api_key_header)):
+    if not WHISPER_API_KEY:
+        return
+    if key != WHISPER_API_KEY:
+        raise HTTPException(status_code=403, detail="API key inválida.")
+
+# ──────────────────────────────────────────────────────────
+
+# ── Model Concurrency Control ────────────────────────────
+_model_lock = threading.Lock()
+_model_ref_count = 0
+_model_ref_cv = threading.Condition(_model_lock)
+
+
+class ModelHandle:
+    """Thread-safe wrapper for the WhisperModel with read-write lock semantics.
+
+    Readers (transcription) call acquire()/release(). The writer (config reload)
+    calls reload() which drains all active readers before swapping the model.
+    """
+
+    def __init__(self):
+        self._model: Optional[WhisperModel] = None
+        self._reload_lock = threading.Lock()
+
+    @property
+    def model(self) -> Optional[WhisperModel]:
+        return self._model
+
+    def acquire(self) -> WhisperModel:
+        global _model_ref_count
+        with _model_ref_cv:
+            _model_ref_count += 1
+        return self._model
+
+    def release(self):
+        global _model_ref_count
+        with _model_ref_cv:
+            _model_ref_count -= 1
+            if _model_ref_count == 0:
+                _model_ref_cv.notify_all()
+
+    def _drain_readers(self):
+        with _model_ref_cv:
+            while _model_ref_count > 0:
+                _model_ref_cv.wait(timeout=1.0)
+
+    def reload(self, model_size: str, device: str, compute_type: str) -> WhisperModel:
+        self._drain_readers()
+        with self._reload_lock:
+            old = self._model
+            try:
+                import gc
+                del old
+                gc.collect()
+                new_model = WhisperModel(model_size, device=device, compute_type=compute_type)
+                self._model = new_model
+                return new_model
+            except Exception:
+                self._model = old
+                raise
+
+    def set_initial(self, model: WhisperModel):
+        self._model = model
+
+
+model_handle = ModelHandle()
 # ──────────────────────────────────────────────────────────
 
 # ── Configuração do Modelo ───────────────────────────────
@@ -54,28 +149,22 @@ def _load_config() -> dict:
     return dict(DEFAULTS)
 
 
-def _save_config(cfg: dict):
-    existing = {}
-    if os.path.exists(CONFIG_FILE):
-        try:
-            with open(CONFIG_FILE) as f:
-                existing = json.load(f)
-        except (json.JSONDecodeError, OSError):
-            pass
-    existing.update(cfg)
+def _save_config(cfg: dict) -> None:
     os.makedirs(os.path.dirname(CONFIG_FILE) or ".", exist_ok=True)
-    with open(CONFIG_FILE, "w") as f:
-        json.dump(existing, f, indent=2)
+    tmp_path = CONFIG_FILE + ".tmp"
+    with open(tmp_path, "w") as f:
+        json.dump(cfg, f, indent=2)
+    os.replace(tmp_path, CONFIG_FILE)
 
 
-def _save_last_known_good(cfg: dict):
+def _save_last_known_good(cfg: dict) -> None:
     snapshot = {k: cfg.get(k, DEFAULTS[k]) for k in DEFAULTS}
     os.makedirs(os.path.dirname(LAST_KNOWN_GOOD_CONFIG) or ".", exist_ok=True)
     with open(LAST_KNOWN_GOOD_CONFIG, "w") as f:
         json.dump(snapshot, f, indent=2)
 
 
-def _load_last_known_good() -> dict | None:
+def _load_last_known_good() -> Optional[dict]:
     if not os.path.exists(LAST_KNOWN_GOOD_CONFIG):
         return None
     try:
@@ -88,7 +177,7 @@ def _load_last_known_good() -> dict | None:
         return None
 
 
-def _cleanup_temp_files():
+def _cleanup_temp_files() -> None:
     for f in glob_module.glob("temp_*"):
         try:
             os.remove(f)
@@ -146,7 +235,8 @@ with open(STARTUP_MARKER, "w") as f:
     f.write(str(time.time()))
 
 try:
-    model = WhisperModel(MODEL_SIZE, device=DEVICE, compute_type=COMPUTE_TYPE)
+    _loaded_model = WhisperModel(MODEL_SIZE, device=DEVICE, compute_type=COMPUTE_TYPE)
+    model_handle.set_initial(_loaded_model)
     print("Modelo carregado com sucesso!")
     _save_last_known_good({
         "model": MODEL_SIZE,
@@ -162,7 +252,8 @@ try:
 except Exception as e:
     print(f"Falha ao carregar modelo ({e}). Usando defaults: small / cpu / int8")
     MODEL_SIZE, DEVICE, COMPUTE_TYPE = "small", "cpu", "int8"
-    model = WhisperModel(MODEL_SIZE, device=DEVICE, compute_type=COMPUTE_TYPE)
+    _loaded_model = WhisperModel(MODEL_SIZE, device=DEVICE, compute_type=COMPUTE_TYPE)
+    model_handle.set_initial(_loaded_model)
     _save_config({
         "model": MODEL_SIZE,
         "device": DEVICE,
@@ -185,6 +276,8 @@ except Exception as e:
         os.remove(STARTUP_MARKER)
     print("Modelo small carregado como fallback.")
 
+MAX_UPLOAD_BYTES = 100 * 1024 * 1024  # 100 MB
+
 START_TIME = time.time()
 # ──────────────────────────────────────────────────────────
 
@@ -200,7 +293,7 @@ EVOLUTION_INSTANCE_NAME = "whisper-bot"
 evolution_config = {**EVOLUTION_DEFAULTS, **config.get("evolution", {})}
 
 EVOLUTION_API_URL = evolution_config["evolution_api_url"].rstrip("/")
-EVOLUTION_API_KEY = evolution_config["evolution_api_key"]
+EVOLUTION_API_KEY = os.getenv("EVOLUTION_API_KEY", "") or evolution_config.get("evolution_api_key", "")
 WHATSAPP_WEBHOOK_URL = evolution_config["whatsapp_webhook_url"]
 
 
@@ -208,7 +301,6 @@ def _save_evolution_config():
     full = _load_config()
     full["evolution"] = {
         "evolution_api_url": EVOLUTION_API_URL,
-        "evolution_api_key": EVOLUTION_API_KEY,
         "whatsapp_webhook_url": WHATSAPP_WEBHOOK_URL,
     }
     _save_config(full)
@@ -221,19 +313,32 @@ def _evolution_headers() -> Dict[str, str]:
     return headers
 
 
+_http_client: Optional[httpx.AsyncClient] = None
+
+
+def _get_http_client() -> httpx.AsyncClient:
+    global _http_client
+    if _http_client is None or _http_client.is_closed:
+        _http_client = httpx.AsyncClient(
+            timeout=30,
+            limits=httpx.Limits(max_keepalive_connections=5, max_connections=10),
+        )
+    return _http_client
+
+
 async def _evolution_proxy(method: str, path: str, **kwargs) -> dict:
     url = f"{EVOLUTION_API_URL}{path}"
-    async with httpx.AsyncClient(timeout=30) as client:
-        resp = await client.request(method, url, headers=_evolution_headers(), **kwargs)
-        if resp.status_code >= 400:
-            detail = "Erro na Evolution API"
-            try:
-                body = resp.json()
-                detail = body.get("response", {}).get("message", body.get("message", detail))
-            except Exception:
-                detail = resp.text[:200]
-            raise HTTPException(status_code=resp.status_code, detail=detail)
-        return resp.json()
+    client = _get_http_client()
+    resp = await client.request(method, url, headers=_evolution_headers(), **kwargs)
+    if resp.status_code >= 400:
+        detail = "Erro na Evolution API"
+        try:
+            body = resp.json()
+            detail = body.get("response", {}).get("message", body.get("message", detail))
+        except Exception:
+            detail = resp.text[:200]
+        raise HTTPException(status_code=resp.status_code, detail=detail)
+    return resp.json()
 # ──────────────────────────────────────────────────────────
 
 # ── Health Check ──────────────────────────────────────────
@@ -244,14 +349,14 @@ def health():
 
 # ── Status & Monitoramento ────────────────────────────────
 @app.get("/status")
-def status():
+def status(_=Depends(_verify_api_key)):
     return {
         "online": True,
         "version": app.version,
         "uptime_seconds": round(time.time() - START_TIME, 1),
         "latency_ms": 0.0,
         "resources": {
-            "cpu_percent": psutil.cpu_percent(interval=0.1),
+            "cpu_percent": psutil.cpu_percent(interval=None),
             "memory_percent": psutil.virtual_memory().percent,
             "gpu_percent": None,
             "gpu_name": None,
@@ -270,50 +375,61 @@ def status():
 
 # ── Transcrição (OpenAI-compatible) ───────────────────────
 @app.post("/v1/audio/transcriptions")
+@limiter.limit("5/minute")
 async def transcribe(
     file: UploadFile = File(...),
     language: str = Form("auto"),
     temperature: float = Form(0.0),
     beam_size: int = Form(5),
     vad_filter: bool = Form(True),
+    _=Depends(_verify_api_key),
 ):
     safe_name = (file.filename or "audio").replace("\\", "/")
     safe_name = os.path.basename(safe_name)
+    contents = await file.read()
+    if len(contents) > MAX_UPLOAD_BYTES:
+        raise HTTPException(status_code=413, detail=f"Arquivo muito grande ({len(contents)} bytes). Limite: {MAX_UPLOAD_BYTES} bytes.")
     temp_path = f"temp_{uuid.uuid4().hex[:8]}_{safe_name}"
     with open(temp_path, "wb") as buffer:
-        shutil.copyfileobj(file.file, buffer)
+        buffer.write(contents)
 
     try:
-        segments_result, info = model.transcribe(
-            temp_path,
-            language=None if language == "auto" else language,
-            beam_size=beam_size,
-            temperature=temperature,
-            vad_filter=vad_filter,
-        )
+        m = model_handle.acquire()
+        try:
+            segments_result, info = m.transcribe(
+                temp_path,
+                language=None if language == "auto" else language,
+                beam_size=beam_size,
+                temperature=temperature,
+                vad_filter=vad_filter,
+            )
 
-        segments = []
-        full_text = ""
+            segments = []
+            full_text = ""
 
-        for seg in segments_result:
-            segments.append({
-                "id": seg.id,
-                "start": round(seg.start, 2),
-                "end": round(seg.end, 2),
-                "text": seg.text.strip(),
-            })
-            full_text += seg.text
+            for seg in segments_result:
+                segments.append({
+                    "id": seg.id,
+                    "start": round(seg.start, 2),
+                    "end": round(seg.end, 2),
+                    "text": seg.text.strip(),
+                })
+                full_text += seg.text
 
-        return {
-            "text": full_text.strip(),
-            "language": info.language,
-            "language_probability": round(info.language_probability, 4),
-            "duration": round(info.duration, 2),
-            "segments": segments,
-        }
+            return {
+                "text": full_text.strip(),
+                "language": info.language,
+                "language_probability": round(info.language_probability, 4),
+                "duration": round(info.duration, 2),
+                "segments": segments,
+            }
+        finally:
+            model_handle.release()
 
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail="Erro interno ao processar transcrição.")
 
     finally:
         if os.path.exists(temp_path):
@@ -322,7 +438,7 @@ async def transcribe(
 
 # ── Configuração ──────────────────────────────────────────
 @app.get("/config")
-def get_config():
+def get_config(_=Depends(_verify_api_key)):
     return {
         "model": MODEL_SIZE,
         "device": DEVICE,
@@ -335,10 +451,9 @@ def get_config():
 
 
 @app.post("/config")
-def set_config(patch: dict):
+def set_config(patch: dict, _=Depends(_verify_api_key)):
     global MODEL_SIZE, DEVICE, COMPUTE_TYPE
     global DEFAULT_LANGUAGE, DEFAULT_TEMPERATURE, DEFAULT_BEAM_SIZE, DEFAULT_VAD_FILTER
-    global model
 
     new_model = patch.get("model", MODEL_SIZE)
     new_device = patch.get("device", DEVICE)
@@ -361,16 +476,13 @@ def set_config(patch: dict):
     if needs_reload:
         old_model, old_device, old_compute = MODEL_SIZE, DEVICE, COMPUTE_TYPE
         print(f"Reiniciando modelo Whisper: {new_model} / {new_device} / {new_compute_type}")
-        import gc
         try:
-            del model
-            gc.collect()
-            model = WhisperModel(new_model, device=new_device, compute_type=new_compute_type)
+            model_handle.reload(new_model, new_device, new_compute_type)
         except Exception as e:
             err_msg = str(e)
             print(f"Falha ao recarregar modelo: {err_msg}")
             MODEL_SIZE, DEVICE, COMPUTE_TYPE = old_model, old_device, old_compute
-            model = WhisperModel(MODEL_SIZE, device=DEVICE, compute_type=COMPUTE_TYPE)
+            model_handle.reload(MODEL_SIZE, DEVICE, COMPUTE_TYPE)
             raise HTTPException(status_code=400, detail=err_msg)
 
     MODEL_SIZE = new_model
@@ -387,16 +499,15 @@ def set_config(patch: dict):
         "vad_filter": DEFAULT_VAD_FILTER,
     })
 
-    if needs_reload:
-        _save_last_known_good({
-            "model": MODEL_SIZE,
-            "device": DEVICE,
-            "compute_type": COMPUTE_TYPE,
-            "language": DEFAULT_LANGUAGE,
-            "temperature": DEFAULT_TEMPERATURE,
-            "beam_size": DEFAULT_BEAM_SIZE,
-            "vad_filter": DEFAULT_VAD_FILTER,
-        })
+    _save_last_known_good({
+        "model": MODEL_SIZE,
+        "device": DEVICE,
+        "compute_type": COMPUTE_TYPE,
+        "language": DEFAULT_LANGUAGE,
+        "temperature": DEFAULT_TEMPERATURE,
+        "beam_size": DEFAULT_BEAM_SIZE,
+        "vad_filter": DEFAULT_VAD_FILTER,
+    })
 
     return {
         "detail": "Configuração aplicada com sucesso.",
@@ -444,8 +555,31 @@ def _parse_journal_line(raw: str) -> Dict | None:
     return {"timestamp": timestamp, "level": level, "message": body}
 
 
+def _parse_journal_json(raw: str) -> Dict | None:
+    try:
+        entry = json.loads(raw)
+        priority = entry.get("PRIORITY", 6)
+        level_map = {0: "EMERG", 1: "ALERT", 2: "CRIT", 3: "ERROR", 4: "WARN", 5: "NOTICE", 6: "INFO", 7: "DEBUG"}
+        level = level_map.get(priority, "INFO")
+        timestamp_us = entry.get("__REALTIME_TIMESTAMP", "")
+        if timestamp_us:
+            try:
+                ts_sec = int(timestamp_us) / 1_000_000
+                from datetime import datetime, timezone
+                dt = datetime.fromtimestamp(ts_sec, tz=timezone.utc)
+                timestamp = dt.strftime("%Y-%m-%dT%H:%M:%S%z")
+            except (ValueError, OSError):
+                timestamp = str(timestamp_us)
+        else:
+            timestamp = ""
+        message = entry.get("MESSAGE", "")
+        return {"timestamp": timestamp, "level": level, "message": message}
+    except (json.JSONDecodeError, TypeError):
+        return None
+
+
 @app.get("/logs")
-def get_logs(limit: int = 200) -> Dict:
+def get_logs(limit: int = 200, _=Depends(_verify_api_key)) -> Dict:
     """ Lê os últimos `limit` logs do systemd journal do serviço whisper. """
     try:
         result = subprocess.run(
@@ -454,7 +588,7 @@ def get_logs(limit: int = 200) -> Dict:
                 "-u", SERVICE_NAME,
                 "--no-pager",
                 "-n", str(limit),
-                "--output=short-iso",
+                "--output=json",
             ],
             capture_output=True,
             text=True,
@@ -463,7 +597,7 @@ def get_logs(limit: int = 200) -> Dict:
 
         lines: List[Dict] = []
         for raw in result.stdout.strip().splitlines():
-            parsed = _parse_journal_line(raw)
+            parsed = _parse_journal_json(raw)
             if parsed:
                 lines.append(parsed)
 
@@ -492,7 +626,7 @@ def _extract_whatsapp_state(data) -> str:
 
 
 @app.post("/whatsapp/instance")
-async def whatsapp_create_instance(patch: dict = Body(default={})):
+async def whatsapp_create_instance(patch: dict = Body(default={}), _=Depends(_verify_api_key)):
     global EVOLUTION_API_URL, EVOLUTION_API_KEY, WHATSAPP_WEBHOOK_URL
 
     if "evolutionApiUrl" in patch:
@@ -566,7 +700,7 @@ async def whatsapp_create_instance(patch: dict = Body(default={})):
 
 
 @app.get("/whatsapp/instance")
-async def whatsapp_status():
+async def whatsapp_status(_=Depends(_verify_api_key)):
     try:
         data = await _evolution_proxy(
             "GET", f"/instance/connectionState/{EVOLUTION_INSTANCE_NAME}"
@@ -591,31 +725,34 @@ async def whatsapp_status():
         }
     except HTTPException as e:
         print(f"[WhatsApp] HTTPException ao obter status: {e.detail}")
-        return {"state": "idle", "instanceName": EVOLUTION_INSTANCE_NAME}
+        return {"state": "error", "instanceName": EVOLUTION_INSTANCE_NAME, "error": str(e.detail)}
     except Exception as e:
         print(f"[WhatsApp] Erro inesperado ao obter status: {type(e).__name__}: {e}")
-        return {"state": "idle", "instanceName": EVOLUTION_INSTANCE_NAME}
+        return {"state": "error", "instanceName": EVOLUTION_INSTANCE_NAME, "error": "Não foi possível verificar o status do WhatsApp."}
 
 
 @app.delete("/whatsapp/instance")
-async def whatsapp_disconnect():
+async def whatsapp_disconnect(_=Depends(_verify_api_key)):
+    errors = []
     try:
         await _evolution_proxy(
             "DELETE", f"/instance/logout/{EVOLUTION_INSTANCE_NAME}"
         )
-    except HTTPException:
-        pass
+    except HTTPException as e:
+        errors.append(f"logout: {e.detail}")
     try:
         await _evolution_proxy(
             "DELETE", f"/instance/delete/{EVOLUTION_INSTANCE_NAME}"
         )
-    except HTTPException:
-        pass
+    except HTTPException as e:
+        errors.append(f"delete: {e.detail}")
+    if errors:
+        return {"detail": f"WhatsApp parcialmente desconectado. Erros: {'; '.join(errors)}"}
     return {"detail": "WhatsApp desconectado com sucesso."}
 
 
 @app.put("/whatsapp/instance/pause")
-async def whatsapp_pause():
+async def whatsapp_pause(_=Depends(_verify_api_key)):
     try:
         await _evolution_proxy(
             "DELETE", f"/instance/logout/{EVOLUTION_INSTANCE_NAME}"
@@ -626,11 +763,16 @@ async def whatsapp_pause():
 
 
 @app.put("/whatsapp/instance/resume")
-async def whatsapp_resume():
+async def whatsapp_resume(_=Depends(_verify_api_key)):
     connect_data = await _evolution_proxy(
         "GET", f"/instance/connect/{EVOLUTION_INSTANCE_NAME}"
     )
-    qrcode = connect_data.get("base64") or connect_data.get("qrcode") or None
+    if isinstance(connect_data, str):
+        qrcode = connect_data if len(connect_data) > 20 else None
+    elif isinstance(connect_data, dict):
+        qrcode = connect_data.get("base64") or connect_data.get("qrcode") or connect_data.get("code") or None
+    else:
+        qrcode = None
     state = "connecting"
     if qrcode is None:
         state = "connected"
@@ -716,19 +858,23 @@ async def evolution_webhook(request: Request):
         if audio_bytes is None or len(audio_bytes) == 0:
             return {"status": "ignored", "reason": "could_not_download_audio"}
 
-        temp_path = f"temp_whatsapp_{int(time.time())}.ogg"
+        temp_path = f"temp_whatsapp_{uuid.uuid4().hex[:8]}.ogg"
         with open(temp_path, "wb") as f:
             f.write(audio_bytes)
 
         try:
-            segments_result, info = model.transcribe(
-                temp_path,
-                language=None if DEFAULT_LANGUAGE == "auto" else DEFAULT_LANGUAGE,
-                beam_size=DEFAULT_BEAM_SIZE,
-                temperature=DEFAULT_TEMPERATURE,
-                vad_filter=DEFAULT_VAD_FILTER,
-            )
-            full_text = "".join(seg.text for seg in segments_result).strip()
+            m = model_handle.acquire()
+            try:
+                segments_result, info = m.transcribe(
+                    temp_path,
+                    language=None if DEFAULT_LANGUAGE == "auto" else DEFAULT_LANGUAGE,
+                    beam_size=DEFAULT_BEAM_SIZE,
+                    temperature=DEFAULT_TEMPERATURE,
+                    vad_filter=DEFAULT_VAD_FILTER,
+                )
+                full_text = "".join(seg.text for seg in segments_result).strip()
+            finally:
+                model_handle.release()
         finally:
             if os.path.exists(temp_path):
                 os.remove(temp_path)
@@ -749,19 +895,21 @@ async def evolution_webhook(request: Request):
         return {"status": "success", "text": full_text}
 
     except Exception as e:
-        print(f"[Webhook] Erro ao processar áudio: {e}")
+        import traceback
+        traceback.print_exc()
+        print(f"[Webhook] Erro ao processar áudio: {type(e).__name__}")
         try:
             await _evolution_proxy(
                 "POST",
                 f"/message/sendText/{EVOLUTION_INSTANCE_NAME}",
                 json={
                     "number": number,
-                    "text": "❌ Erro ao transcrever o áudio. Tente novamente.",
+                    "text": f"❌ Não foi possível transcrever o áudio (erro: {type(e).__name__}). Verifique se o modelo está ativo ou tente novamente com um áudio mais curto.",
                 },
             )
         except Exception:
             pass
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Erro interno ao processar áudio do webhook.")
 
 
 # ── Frontend Estático ─────────────────────────────────────

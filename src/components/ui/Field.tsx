@@ -24,12 +24,12 @@ export function Field({ label, hint, htmlFor, error, children, className }: Fiel
     <div className={cn('space-y-1.5', className)}>
       <label
         htmlFor={htmlFor}
-        className="block text-xs font-medium uppercase tracking-wide text-slate-600"
+        className="block text-xs font-medium uppercase tracking-wide text-slate-600 dark:text-slate-400"
       >
         {label}
       </label>
       {children}
-      {hint && !error && <p className="text-xs text-slate-500">{hint}</p>}
+      {hint && !error && <p className="text-xs text-slate-500 dark:text-slate-400">{hint}</p>}
       {error && <p className="text-xs font-medium text-rose-600">{error}</p>}
     </div>
   );

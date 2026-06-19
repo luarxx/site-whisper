@@ -15,6 +15,26 @@ export function App() {
   const refreshConfig = useAppStore((s) => s.refreshConfig);
   const dismissToast = useAppStore((s) => s.dismissToast);
   const toasts = useAppStore((s) => s.toasts);
+  const theme = useAppStore((s) => s.theme);
+
+  useEffect(() => {
+    document.documentElement.classList.toggle('dark', theme === 'dark');
+  }, [theme]);
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem('whisper-store');
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        const saved = parsed?.state?.theme;
+        if (saved === 'dark' || saved === 'light') {
+          document.documentElement.classList.toggle('dark', saved === 'dark');
+        }
+      }
+    } catch {
+      /* ignore parse errors */
+    }
+  }, []);
 
   useEffect(() => {
     void checkConnection();
@@ -33,6 +53,7 @@ export function App() {
 
       if (e.key === 'Escape') {
         if (toasts.length > 0) {
+          e.preventDefault();
           dismissToast(toasts[toasts.length - 1].id);
           return;
         }
@@ -53,16 +74,16 @@ export function App() {
   }, [toasts, dismissToast]);
 
   return (
-    <div className="flex h-full min-h-screen bg-slate-50">
+    <div className="flex h-full min-h-screen bg-slate-50 dark:bg-slate-950">
       <Sidebar active={active} onSelect={setActive} />
 
       <main className="min-w-0 flex-1 overflow-y-auto pb-safe">
         <div className="mx-auto w-full max-w-6xl space-y-6 px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
           <header className="flex flex-col gap-1 pt-[max(2.5rem,env(safe-area-inset-top,0px))] lg:pt-0">
-            <h1 className="text-2xl font-semibold tracking-tight text-slate-900 sm:text-3xl">
+            <h1 className="text-2xl font-semibold tracking-tight text-slate-900 dark:text-slate-100 sm:text-3xl">
               {getTitle(active)}
             </h1>
-            <p className="text-sm text-slate-500">{getDescription(active)}</p>
+            <p className="text-sm text-slate-500 dark:text-slate-400">{getDescription(active)}</p>
           </header>
 
           {active === 'transcribe' && (

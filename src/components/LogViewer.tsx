@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useMemo } from 'react';
 import { Terminal, RefreshCw, Pause, Play, Trash2 } from 'lucide-react';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
@@ -19,6 +19,7 @@ export function LogViewer() {
   const isOnline = useAppStore((s) => s.isOnline);
   const isLoadingLogs = useAppStore((s) => s.isLoadingLogs);
   const refreshLogs = useAppStore((s) => s.refreshLogs);
+  const clearLogs = useAppStore((s) => s.clearLogs);
 
   const [autoRefresh, setAutoRefresh] = useState(false);
   const [intervalSec] = useState(3);
@@ -43,12 +44,14 @@ export function LogViewer() {
     }
   }, [logs, autoScroll]);
 
-  const filtered = filter
-    ? logs.filter((l) =>
-        l.message.toLowerCase().includes(filter.toLowerCase()) ||
-        l.level.toLowerCase().includes(filter.toLowerCase())
-      )
-    : logs;
+  const filtered = useMemo(() => {
+    if (!filter) return logs;
+    const lower = filter.toLowerCase();
+    return logs.filter((l) =>
+      l.message.toLowerCase().includes(lower) ||
+      l.level.toLowerCase().includes(lower)
+    );
+  }, [logs, filter]);
 
   const handleScroll = () => {
     const el = containerRef.current;
@@ -71,7 +74,7 @@ export function LogViewer() {
             value={filter}
             onChange={(e) => setFilter(e.target.value)}
             placeholder="Filtrar…"
-            className="h-8 w-28 rounded-lg border border-slate-200 bg-white px-2.5 text-xs shadow-soft focus:border-brand-400 focus:outline-none focus:ring-2 focus:ring-brand-100 sm:w-36"
+            className="h-8 w-28 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-2.5 text-xs text-slate-800 dark:text-slate-200 shadow-soft focus:border-brand-400 focus:outline-none focus:ring-2 focus:ring-brand-100 dark:focus:ring-brand-900/50 sm:w-36"
           />
           <Button
             variant="secondary"
@@ -93,7 +96,7 @@ export function LogViewer() {
           <Button
             variant="ghost"
             size="sm"
-            onClick={() => useAppStore.setState({ logs: [] })}
+            onClick={() => clearLogs()}
             leftIcon={<Trash2 className="h-3.5 w-3.5" />}
             aria-label="Limpar buffer local"
           />
@@ -139,7 +142,7 @@ export function LogViewer() {
             <ul className="space-y-0.5">
               {filtered.map((line, idx) => (
                 <li
-                  key={`${line.timestamp}-${idx}`}
+                  key={`${line.timestamp}-${line.message.substring(0, 30)}-${idx}`}
                   className="flex gap-3 whitespace-pre-wrap break-all hover:bg-white/[0.02]"
                 >
                   <span className="shrink-0 text-slate-500">{line.timestamp}</span>

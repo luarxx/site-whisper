@@ -239,3 +239,171 @@ Registro de bugs encontrados, causas raiz e solucoes aplicadas. O agente deve co
 **Arquivos afetados:** `main.py`, `src/store/useAppStore.ts`
 
 **Tags:** `backend` `frontend` `api` `whatsapp` `state`
+
+### 2026-06-19 Auditoria B-006: Upload sem limite de tamanho (DoS)
+
+**Sintoma:** Endpoint `POST /v1/audio/transcriptions` aceita qualquer tamanho de arquivo, permitindo exaustão de disco.
+
+**Causa:** `UploadFile` do FastAPI não impõe limite de tamanho por padrão.
+
+**Solucao:** Adicionada constante `MAX_UPLOAD_BYTES = 100 * 1024 * 1024` (100 MB) e verificação `len(contents) > MAX_UPLOAD_BYTES` antes de escrever o arquivo temporário no disco. Retorna HTTP 413 com mensagem descritiva.
+
+**Arquivos afetados:** `main.py`
+
+**Tags:** `backend` `api` `security`
+
+### 2026-06-19 Auditoria B-007: Chave Evolution API em texto plano no disco
+
+**Sintoma:** A chave da Evolution API era persistida em `whisper_config.json` em texto plano, acessível a qualquer processo na VPS.
+
+**Causa:** `_save_evolution_config()` gravava `evolution_api_key` junto com dados não sensíveis no JSON.
+
+**Solucao:** (1) `EVOLUTION_API_KEY` agora é lida primeiro de `os.getenv("EVOLUTION_API_KEY")`, com fallback para o valor em disco (para backward compatibility). (2) `_save_evolution_config()` não persiste mais a chave — grava apenas `evolution_api_url` e `whatsapp_webhook_url`. (3) Adicionada variável `EVOLUTION_API_KEY` ao `.env.example` para documentação.
+
+**Arquivos afetados:** `main.py`, `.env.example`
+
+**Tags:** `backend` `api` `security`
+
+### 2026-06-19 Auditoria B-009: AttributeError no whatsapp_resume
+
+**Sintoma:** `PUT /whatsapp/instance/resume` crashava com 500 quando a Evolution API retornava resposta não-dict (string, lista).
+
+**Causa:** `connect_data.get("base64")` assumia que `connect_data` era dict, mas `_evolution_proxy` pode retornar qualquer tipo. O padrão `isinstance` já existia em `whatsapp_create_instance` mas não foi propagado para `resume`.
+
+**Solucao:** Adicionadas verificações `isinstance(connect_data, str)` e `isinstance(connect_data, dict)` antes de acessar `.get()`, espelhando o padrão de `whatsapp_create_instance`.
+
+**Arquivos afetados:** `main.py`
+
+**Tags:** `backend` `api` `whatsapp`
+
+### 2026-06-19 Auditoria F-001: Stale closure no teclado do AudioUploader
+
+**Sintoma:** Ctrl+Enter usava opções de transcrição obsoletas (`transcribeOpts`) porque o `useEffect` não incluía `handleTranscribe` nas dependências.
+
+**Causa:** O `useEffect` do listener de teclado tinha `[state, isOnline, isTranscribing, cancelTranscription]` como dependências, mas chamava `handleTranscribe()` que lia `transcribeOpts`. Como `handleTranscribe` não era dependência, o listener nunca era re-registrado quando as opções mudavam.
+
+**Solucao:** (1) Movido `useEffect` para após a definição de `handleTranscribe`. (2) Adicionado `handleTranscribe` ao array de dependências do `useEffect`.
+
+**Arquivos afetados:** `src/components/AudioUploader.tsx`
+
+**Tags:** `frontend` `state` `store`
+
+### 2026-06-19 Auditoria B-005: Corrida TOCTOU no _save_config
+
+**Sintoma:** `_save_config` fazia read-modify-write sem proteção contra concorrência. Duas requisições `POST /config` simultâneas podiam sobrescrever mudanças uma da outra.
+
+**Causa:** Ciclo read-modify-write sem bloqueio de arquivo ou escrita atômica.
+
+**Solucao:** Implementada escrita atômica usando arquivo temporário (`.tmp`) e `os.replace()` que é atômico no POSIX.
+
+**Arquivos afetados:** `main.py`
+
+**Tags:** `backend` `api` `concurrency`
+
+### 2026-06-19 Auditoria B-008: Detalhes de exceção expostos em 500
+
+**Sintoma:** Mensagens de erro Python eram enviadas diretamente ao cliente em respostas 500, expondo caminhos internos e detalhes de bibliotecas.
+
+**Causa:** `str(e)` era passado diretamente para `HTTPException(detail=str(e))` sem sanitização.
+
+**Solucao:** Exceções agora são logadas no servidor com `traceback.print_exc()` e o cliente recebe mensagem genérica ("Erro interno ao processar transcrição.").
+
+**Arquivos afetados:** `main.py`
+
+**Tags:** `backend` `api` `security`
+
+### 2026-06-19 Auditoria B-010: GET /whatsapp/instance mascarava erros
+
+**Sintoma:** Qualquer exceção em `whatsapp_status` retornava `{"state": "idle"}`, tornando impossível distinguir "desconectado" de "erro de conexão".
+
+**Causa:** Catch-all `except Exception` retornava fallback `"idle"` para evitar crashes no frontend.
+
+**Solucao:** Erros agora retornam `{"state": "error", "error": "descrição"}` em vez de mascarar como "idle".
+
+**Arquivos afetados:** `main.py`
+
+**Tags:** `backend` `api` `whatsapp`
+
+### 2026-06-19 Auditoria B-011: DELETE /whatsapp/instance falha silenciosa
+
+**Sintoma:** Operações de logout e delete ignoravam falhas silenciosamente, retornando sucesso mesmo quando a Evolution API estava inalcançável.
+
+**Causa:** `except HTTPException: pass` suprimia erros sem log ou reporte.
+
+**Solucao:** Erros agora são coletados em lista e reportados na resposta ("WhatsApp parcialmente desconectado. Erros: ...").
+
+**Arquivos afetados:** `main.py`
+
+**Tags:** `backend` `api` `whatsapp`
+
+### 2026-06-19 Auditoria B-012: Regex do journal frágil
+
+**Sintoma:** Parser de logs usava regex vinculada a formato `short-iso` específico. Mudanças no systemd journal causavam logs vazios silenciosos.
+
+**Causa:** Regex `_JOURNAL_RE` assumia formato fixo sem fallback.
+
+**Solucao:** Alterado para `--output=json` com parser `_parse_journal_json()` que extrai timestamp, nível e mensagem de forma robusta usando campos estruturados do JSON.
+
+**Arquivos afetados:** `main.py`
+
+**Tags:** `backend` `api` `logs`
+
+### 2026-06-19 Auditoria B-013: Sem pooling de conexão httpx
+
+**Sintoma:** Cada chamada à Evolution API criava novo `httpx.AsyncClient`, desperdiçando handshakes TCP (~50-100ms por requisição).
+
+**Causa:** `async with httpx.AsyncClient(timeout=30) as client:` era chamado dentro de `_evolution_proxy`.
+
+**Solucao:** Implementado cliente HTTP compartilhado em nível de módulo com `_get_http_client()` e cleanup no `shutdown_event`.
+
+**Arquivos afetados:** `main.py`
+
+**Tags:** `backend` `api` `performance`
+
+### 2026-06-19 Auditoria B-016: Sem rate limiting
+
+**Sintoma:** Endpoint de transcrição aceitava requisições ilimitadas, permitindo DoS via exaustão de CPU/disco.
+
+**Causa:** Nenhum mecanismo de rate limiting configurado.
+
+**Solucao:** Adicionado `slowapi` com limite de 5 req/min no endpoint `/v1/audio/transcriptions`.
+
+**Arquivos afetados:** `main.py`, `requirements.txt`
+
+**Tags:** `backend` `api` `security`
+
+### 2026-06-19 Auditoria F-005: Sem ErrorBoundary
+
+**Sintoma:** Erros de renderização em qualquer componente deixavam a página completamente em branco.
+
+**Causa:** Nenhum `ErrorBoundary` na árvore de componentes React.
+
+**Solucao:** Criado `src/components/ErrorBoundary.tsx` com UI de fallback e botão de retry. Envolvido `App` no `main.tsx`.
+
+**Arquivos afetados:** `src/components/ErrorBoundary.tsx`, `src/main.tsx`
+
+**Tags:** `frontend` `error-handling`
+
+### 2026-06-19 Auditoria S-002: CORS allow_credentials=True com allow_origins=["*"]
+
+**Sintoma:** Configuração CORS inválida: `allow_credentials=True` com `allow_origins=["*"]` é rejeitada pela especificação CORS.
+
+**Causa:** Configuração copiada de template sem consideração semântica.
+
+**Solucao:** Alterado `allow_credentials=True` para `allow_credentials=False`.
+
+**Arquivos afetados:** `main.py`
+
+**Tags:** `backend` `api` `security`
+
+### 2026-06-19 Auditoria I-004: requirements.txt não implantado
+
+**Sintoma:** Adição de novas dependências Python ao `main.py` quebrava produção porque o CI/CD não instalava dependências.
+
+**Causa:** Pipeline CI/CD só copiava `main.py` e `dist/`, sem etapa `pip install`.
+
+**Solucao:** Criado `requirements.txt` com todas as dependências. Adicionado step de deploy do arquivo e instalação via `pip install -r` no CI/CD.
+
+**Arquivos afetados:** `requirements.txt`, `.github/workflows/deploy.yml`
+
+**Tags:** `backend` `ci-cd` `dependencies`

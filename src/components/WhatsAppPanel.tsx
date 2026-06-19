@@ -1,4 +1,4 @@
-import { useEffect, useCallback } from 'react';
+import { useEffect, useCallback, useRef } from 'react';
 import { Smartphone, QrCode, Link2, Unlink, CheckCircle2, AlertCircle, Loader2, Pause, Play, RefreshCw } from 'lucide-react';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
@@ -23,17 +23,17 @@ export function WhatsAppPanel() {
   const resumeWhatsApp = useAppStore((s) => s.resumeWhatsApp);
   const disconnectWhatsApp = useAppStore((s) => s.disconnectWhatsApp);
 
+  const retriesRef = useRef(0);
   useEffect(() => {
     let id: ReturnType<typeof setTimeout> | null = null;
-    let retries = 0;
     const maxRetries = 4;
 
     const attempt = () => {
       void checkWhatsAppStatus().then(() => {
         const state = useAppStore.getState().whatsAppState;
-        if (state !== 'idle' || retries >= maxRetries) return;
-        retries++;
-        const delay = Math.min(1000 * Math.pow(2, retries - 1), 8000);
+        if (state !== 'idle' || retriesRef.current >= maxRetries) return;
+        retriesRef.current++;
+        const delay = Math.min(1000 * Math.pow(2, retriesRef.current - 1), 8000);
         id = setTimeout(attempt, delay);
       });
     };
@@ -81,7 +81,7 @@ export function WhatsAppPanel() {
         padded
       >
         <div className="space-y-5">
-          <p className="text-sm text-slate-500">
+          <p className="text-sm text-slate-500 dark:text-slate-400">
             A conexão utiliza a Evolution API configurada no servidor. Clique em <strong>Conectar</strong> para iniciar.
           </p>
 
@@ -151,7 +151,7 @@ export function WhatsAppPanel() {
           </div>
 
           {whatsAppError && (
-            <p className="flex items-center gap-1.5 text-sm font-medium text-rose-600">
+            <p className="flex items-center gap-1.5 text-sm font-medium text-rose-600 dark:text-rose-400">
               <AlertCircle className="h-4 w-4" />
               {whatsAppError}
             </p>
@@ -167,10 +167,12 @@ export function WhatsAppPanel() {
           padded
         >
           <div className="flex flex-col items-center gap-4">
-            <div className="rounded-2xl border-2 border-slate-200 bg-white p-2 sm:p-4 shadow-soft">
+            <div className="rounded-2xl border-2 border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 p-2 sm:p-4 shadow-soft">
               <img
                 src={qrSrc}
                 alt="QR Code do WhatsApp"
+                width={192}
+                height={192}
                 className="h-48 w-48 sm:h-64 sm:w-64"
               />
             </div>
@@ -189,12 +191,12 @@ export function WhatsAppPanel() {
           description="Seu WhatsApp está vinculado e pronto para transcrição automática."
           padded
         >
-          <div className="space-y-3 text-sm text-slate-600">
+          <div className="space-y-3 text-sm text-slate-600 dark:text-slate-400">
             <p>
               Envie áudios no seu próprio chat (fale com você mesmo) e a transcrição
               será enviada de volta automaticamente.
             </p>
-            <div className="rounded-xl bg-brand-50 px-4 py-3 text-brand-700">
+            <div className="rounded-xl bg-brand-50 dark:bg-brand-900/20 px-4 py-3 text-brand-700 dark:text-brand-300">
               <p className="text-xs font-medium uppercase tracking-wide">Como usar</p>
               <ol className="mt-2 list-inside list-decimal space-y-1 text-sm">
                 <li>Abra o WhatsApp no celular</li>
@@ -214,7 +216,7 @@ export function WhatsAppPanel() {
           description="A conexão com o WhatsApp está pausada. Seus áudios não serão transcritos enquanto estiver pausado."
           padded
         >
-          <div className="space-y-3 text-sm text-slate-600">
+          <div className="space-y-3 text-sm text-slate-600 dark:text-slate-400">
             <p>
               Clique em <strong>Retomar</strong> para reconectar o WhatsApp. Se a
               sessão ainda for válida, a conexão será restabelecida sem precisar

@@ -17,6 +17,7 @@ interface TranscribeOptions {
 }
 
 interface AppState {
+  theme: 'light' | 'dark';
   isOnline: boolean;
   isConnecting: boolean;
   transcription: string;
@@ -38,6 +39,7 @@ interface AppState {
   whatsAppError: string | null;
 
   setTranscribeOpts: (patch: Partial<TranscribeOptions>) => void;
+  toggleTheme: () => void;
   checkConnection: () => Promise<void>;
   setTranscription: (text: string) => void;
   setTranscribing: (loading: boolean) => void;
@@ -46,6 +48,7 @@ interface AppState {
   refreshConfig: () => Promise<void>;
   updateConfigDraft: (patch: Partial<WhisperConfig>) => void;
   saveConfig: () => Promise<void>;
+  clearLogs: () => void;
   refreshLogs: () => Promise<void>;
   startTranscription: (file: File, opts: TranscribeOptions) => Promise<void>;
   cancelTranscription: () => void;
@@ -70,6 +73,7 @@ export const useAppStore = create<AppState>()(
     (set, get) => ({
       isOnline: false,
       isConnecting: false,
+      theme: 'light',
       transcription: '',
       transcribeError: null,
       isTranscribing: false,
@@ -89,6 +93,12 @@ export const useAppStore = create<AppState>()(
 
       setTranscribeOpts: (patch) => {
         set((state) => ({ transcribeOpts: { ...state.transcribeOpts, ...patch } }));
+      },
+
+      toggleTheme: () => {
+        set((state) => ({
+          theme: state.theme === 'light' ? 'dark' : 'light',
+        }));
       },
 
   /**
@@ -184,6 +194,8 @@ export const useAppStore = create<AppState>()(
       throw err;
     }
   },
+
+  clearLogs: () => set({ logs: [] }),
 
   refreshLogs: async () => {
     const { pushToast } = get();
@@ -345,6 +357,7 @@ export const useAppStore = create<AppState>()(
         return data as unknown as AppState;
       },
       partialize: (state) => ({
+        theme: state.theme,
         transcribeOpts: state.transcribeOpts,
         config: state.config,
       }),

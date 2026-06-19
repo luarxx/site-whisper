@@ -1,6 +1,8 @@
 import axios, { AxiosError, type AxiosInstance } from 'axios';
 import type { LogLine, TranscribeResponse, WhisperConfig, WhatsAppInstanceData, WhatsAppStatusResponse } from '@/types';
 
+const API_KEY = import.meta.env.VITE_WHISPER_API_KEY ?? '';
+
 export class ApiClient {
   private instance: AxiosInstance;
 
@@ -14,7 +16,10 @@ export class ApiClient {
     this.instance = axios.create({
       baseURL: normalized,
       timeout: 120_000,
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        ...(API_KEY ? { 'X-API-Key': API_KEY } : {}),
+      },
     });
 
     this.instance.interceptors.request.use((config) => {

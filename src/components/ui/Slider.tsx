@@ -48,8 +48,8 @@ export function Slider({
     <div className={cn('space-y-2', className)}>
       {label && (
         <div className="flex items-center justify-between text-xs">
-          <span className="font-medium uppercase tracking-wide text-slate-600">{label}</span>
-          <span className="font-mono text-slate-700">{formatValue ? formatValue(value) : value}</span>
+          <span className="font-medium uppercase tracking-wide text-slate-600 dark:text-slate-400">{label}</span>
+          <span className="font-mono text-slate-700 dark:text-slate-300">{formatValue ? formatValue(value) : value}</span>
         </div>
       )}
       <div className="relative">
@@ -63,7 +63,7 @@ export function Slider({
           disabled={disabled}
           onChange={(e) => onChange(Number(e.target.value))}
           className={cn(
-            'h-2 w-full cursor-pointer appearance-none rounded-full bg-slate-200',
+            'h-2 w-full cursor-pointer appearance-none rounded-full bg-slate-200 dark:bg-slate-700',
             'accent-brand-600 disabled:cursor-not-allowed disabled:opacity-60',
             '[&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:w-4',
             '[&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full',
@@ -79,11 +79,11 @@ export function Slider({
           }}
         />
       </div>
-      <div className="flex justify-between text-[10px] font-mono text-slate-400">
+      <div className="flex justify-between text-[10px] font-mono text-slate-400 dark:text-slate-500">
         <span>{min}</span>
         <span>{max}</span>
       </div>
-      {hint && <p className="text-xs text-slate-500">{hint}</p>}
+      {hint && <p className="text-xs text-slate-500 dark:text-slate-400">{hint}</p>}
     </div>
   );
 }

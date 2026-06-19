@@ -51,24 +51,7 @@ export function AudioUploader() {
   const [copied, setCopied] = useState(false);
   const [showOpts, setShowOpts] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
-
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
-        e.preventDefault();
-        if (state?.file && isOnline && !isTranscribing) {
-          handleTranscribe();
-        }
-      }
-      if (e.key === 'Escape' && isTranscribing) {
-        e.preventDefault();
-        cancelTranscription();
-      }
-    };
-
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [state, isOnline, isTranscribing, cancelTranscription]);
+  const objectUrlRef = useRef<string | null>(null);
 
   /**
    * Define o arquivo de áudio selecionado e tenta obter sua duração.
@@ -82,16 +65,27 @@ export function AudioUploader() {
       });
       return;
     }
+    if (objectUrlRef.current) {
+      URL.revokeObjectURL(objectUrlRef.current);
+      objectUrlRef.current = null;
+    }
     setState({ file, durationSec: null });
     setTranscription('');
 
     if (file.type.startsWith('audio/')) {
+      const url = URL.createObjectURL(file);
+      objectUrlRef.current = url;
       const audio = new Audio();
       audio.preload = 'metadata';
-      audio.src = URL.createObjectURL(file);
+      audio.src = url;
       audio.onloadedmetadata = () => {
         setState((prev) => (prev ? { ...prev, durationSec: audio.duration } : prev));
-        URL.revokeObjectURL(audio.src);
+        URL.revokeObjectURL(url);
+        objectUrlRef.current = null;
+      };
+      audio.onerror = () => {
+        URL.revokeObjectURL(url);
+        objectUrlRef.current = null;
       };
     }
   }, [setTranscription]);
@@ -118,6 +112,10 @@ export function AudioUploader() {
 
   /** Limpa o arquivo selecionado e a transcrição (sem parâmetros). */
   const clear = () => {
+    if (objectUrlRef.current) {
+      URL.revokeObjectURL(objectUrlRef.current);
+      objectUrlRef.current = null;
+    }
     setState(null);
     setTranscription('');
     if (inputRef.current) inputRef.current.value = '';
@@ -135,6 +133,24 @@ export function AudioUploader() {
     }
     await startTranscription(state.file, transcribeOpts);
   };
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+        e.preventDefault();
+        if (state?.file && isOnline && !isTranscribing) {
+          handleTranscribe();
+        }
+      }
+      if (e.key === 'Escape' && isTranscribing) {
+        e.preventDefault();
+        cancelTranscription();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [state, isOnline, isTranscribing, cancelTranscription, handleTranscribe]);
 
   /**
    * Copia a transcrição para a área de transferência.
@@ -170,10 +186,10 @@ export function AudioUploader() {
           }}
           className={cn(
             'group relative flex flex-col items-center justify-center gap-3 rounded-2xl border-2 border-dashed px-6 py-10 text-center transition-all',
-            'cursor-pointer focus:outline-none focus:ring-2 focus:ring-brand-300',
+            'cursor-pointer focus:outline-none focus:ring-2 focus:ring-brand-300 dark:focus:ring-brand-700',
             isDragging
-              ? 'border-brand-400 bg-brand-50/60'
-              : 'border-slate-200 bg-slate-50/40 hover:border-brand-300 hover:bg-brand-50/30'
+              ? 'border-brand-400 bg-brand-50/60 dark:bg-brand-900/20'
+              : 'border-slate-200 dark:border-slate-700 bg-slate-50/40 dark:bg-slate-800/40 hover:border-brand-300 dark:hover:border-brand-600 hover:bg-brand-50/30 dark:hover:bg-brand-900/10'
           )}
         >
           <input
@@ -183,14 +199,14 @@ export function AudioUploader() {
             className="hidden"
             onChange={handleInput}
           />
-          <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-white text-brand-600 shadow-soft ring-1 ring-slate-200 transition-transform group-hover:scale-105">
+          <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-white dark:bg-slate-800 text-brand-600 dark:text-brand-400 shadow-soft ring-1 ring-slate-200 dark:ring-slate-700 transition-transform group-hover:scale-105">
             <Upload className="h-5 w-5" />
           </div>
           <div>
-            <p className="text-sm font-medium text-slate-800">
+            <p className="text-sm font-medium text-slate-800 dark:text-slate-200">
               {isDragging ? 'Solte o arquivo aqui' : 'Arraste e solte o áudio aqui'}
             </p>
-            <p className="mt-1 text-xs text-slate-500">
+            <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
               ou <span className="font-medium text-brand-600">clique para selecionar um arquivo</span> ·
               MP3, WAV, M4A, OGG, FLAC
             </p>
@@ -198,15 +214,15 @@ export function AudioUploader() {
         </div>
 
         {state && (
-          <div className="flex items-center gap-3 rounded-xl border border-slate-200 bg-slate-50/60 p-3 animate-fade-in">
-            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-brand-100 text-brand-700">
+          <div className="flex items-center gap-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50/60 dark:bg-slate-800/60 p-3 animate-fade-in">
+            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-brand-100 dark:bg-brand-900/30 text-brand-700 dark:text-brand-400">
               <FileAudio className="h-5 w-5" />
             </div>
             <div className="min-w-0 flex-1">
-              <p className="truncate text-sm font-medium text-slate-800" title={state.file.name}>
+              <p className="truncate text-sm font-medium text-slate-800 dark:text-slate-200" title={state.file.name}>
                 {state.file.name}
               </p>
-              <p className="text-xs text-slate-500">
+              <p className="text-xs text-slate-500 dark:text-slate-400">
                 {formatBytes(state.file.size)}
                 {state.durationSec !== null && ` · ${formatDuration(state.durationSec)}`}
               </p>
@@ -223,7 +239,7 @@ export function AudioUploader() {
         )}
 
         {transcribeError && state && !isTranscribing && (
-          <div className="flex flex-wrap items-start gap-3 rounded-xl border border-rose-200 bg-rose-50/60 p-3 animate-fade-in">
+          <div className="flex flex-wrap items-start gap-3 rounded-xl border border-rose-200 dark:border-rose-800 bg-rose-50/60 dark:bg-rose-900/20 p-3 animate-fade-in">
             <div className="flex items-start gap-3 min-w-0 flex-1">
               <AlertTriangle className="h-4 w-4 shrink-0 text-rose-500 mt-0.5" />
               <div className="min-w-0 flex-1">
@@ -250,11 +266,13 @@ export function AudioUploader() {
               onClick={() => setShowOpts((v) => !v)}
               leftIcon={<Settings2 className="h-4 w-4" />}
               rightIcon={showOpts ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+              aria-expanded={showOpts}
+              aria-controls="transcription-opts"
             >
               {showOpts ? 'Ocultar opções' : 'Opções da IA'}
             </Button>
             {config && (
-              <span className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white px-2.5 py-0.5 text-xs font-medium text-slate-500 shadow-soft">
+              <span className="inline-flex items-center gap-1 rounded-full border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-2.5 py-0.5 text-xs font-medium text-slate-500 dark:text-slate-400 shadow-soft">
                 <Sparkles className="h-3 w-3 text-brand-400" />
                 {MODELS.find((m) => m.value === config.model)?.label ?? config.model}
               </span>
@@ -285,8 +303,8 @@ export function AudioUploader() {
         </div>
 
         {showOpts && (
-          <div className="space-y-4 rounded-2xl border border-slate-200 bg-slate-50/60 p-4 animate-fade-in">
-            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+          <div id="transcription-opts" className="space-y-4 rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-50/60 dark:bg-slate-800/60 p-4 animate-fade-in">
+            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
               Parâmetros de transcrição
             </p>
 
@@ -321,7 +339,7 @@ export function AudioUploader() {
                     step={1}
                     value={transcribeOpts.beam_size}
                     onChange={(e) => setTranscribeOpts({ beam_size: Math.max(1, Math.min(10, Number(e.target.value) || 5)) })}
-                    className="h-10 w-24 rounded-xl border border-slate-200 bg-white px-3 text-sm shadow-soft focus:border-brand-400 focus:outline-none focus:ring-2 focus:ring-brand-100"
+                    className="h-10 w-24 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 text-sm text-slate-800 dark:text-slate-200 shadow-soft focus:border-brand-400 focus:outline-none focus:ring-2 focus:ring-brand-100 dark:focus:ring-brand-900/50"
                   />
                   <input
                     type="range"
@@ -347,12 +365,12 @@ export function AudioUploader() {
               hint="0 = respostas mais determinísticas e fiéis. Valores maiores aumentam a aleatoriedade — útil para criatividade, mas pode gerar erros."
             />
 
-            <label className="flex items-center justify-between rounded-xl border border-slate-200 bg-white px-4 py-3">
+            <label className="flex items-center justify-between rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-4 py-3">
               <div className="flex items-center gap-3">
-                <Brain className="h-4 w-4 text-slate-500" />
+                <Brain className="h-4 w-4 text-slate-500 dark:text-slate-400" />
                 <div>
-                  <p className="text-sm font-medium text-slate-800">VAD Filter</p>
-                  <p className="text-xs text-slate-500">
+                  <p className="text-sm font-medium text-slate-800 dark:text-slate-200">VAD Filter</p>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">
                     Detecta e remove trechos silenciosos antes de transcrever. Reduz erros em áudios com muito silêncio ou ruído de fundo.
                   </p>
                 </div>
@@ -368,9 +386,9 @@ export function AudioUploader() {
         )}
 
         {transcription && (
-          <div className="space-y-2 rounded-2xl border border-slate-200 bg-slate-50/60 p-4 animate-fade-in">
+          <div className="space-y-2 rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-50/60 dark:bg-slate-800/60 p-4 animate-fade-in">
             <div className="flex items-center justify-between">
-              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
                 Resultado
               </p>
               <Button
@@ -384,7 +402,7 @@ export function AudioUploader() {
                 {copied ? 'Copiado' : 'Copiar'}
               </Button>
             </div>
-            <p className="whitespace-pre-wrap break-words text-sm leading-relaxed text-slate-800">
+            <p className="whitespace-pre-wrap break-words text-sm leading-relaxed text-slate-800 dark:text-slate-200">
               {transcription}
             </p>
           </div>

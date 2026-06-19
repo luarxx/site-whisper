@@ -33,24 +33,24 @@ export function Card({
     <section
       {...props}
       className={cn(
-        'rounded-2xl border border-slate-200/80 bg-white',
+        'rounded-2xl border border-slate-200/80 dark:border-slate-700/80 bg-white dark:bg-slate-900',
         className
       )}
     >
       {(title || actions) && (
-        <header className="flex flex-col gap-3 border-b border-slate-100 p-4 sm:flex-row sm:items-start sm:justify-between sm:px-5 sm:py-4">
+        <header className="flex flex-col gap-3 border-b border-slate-100 dark:border-slate-800 p-4 sm:flex-row sm:items-start sm:justify-between sm:px-5 sm:py-4">
           <div className="flex items-start gap-3">
             {icon && (
-              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-brand-50 text-brand-600">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-brand-50 dark:bg-brand-900/30 text-brand-600 dark:text-brand-400">
                 {icon}
               </div>
             )}
             <div className="space-y-0.5">
               {title && (
-                <h2 className="text-sm font-semibold text-slate-900">{title}</h2>
+                <h2 className="text-sm font-semibold text-slate-900 dark:text-slate-100">{title}</h2>
               )}
               {description && (
-                <p className="text-xs text-slate-500">{description}</p>
+                <p className="text-xs text-slate-500 dark:text-slate-400">{description}</p>
               )}
             </div>
           </div>

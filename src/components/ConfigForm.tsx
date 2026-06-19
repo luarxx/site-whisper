@@ -3,6 +3,7 @@ import { Save, RotateCcw, Sliders, Cpu, Zap, RefreshCw } from 'lucide-react';
 import { Card } from '@/components/ui/Card';
 import { Field } from '@/components/ui/Field';
 import { Select } from '@/components/ui/Select';
+import { SelectWithDescription } from '@/components/ui/SelectWithDescription';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
 import { useAppStore } from '@/store/useAppStore';
@@ -72,11 +73,11 @@ export function ConfigForm() {
         {loading ? (
           <div className="flex items-center gap-3 py-4">
             <RefreshCw className="h-4 w-4 animate-spin text-brand-600" />
-            <p className="text-sm text-slate-500">Carregando configurações do servidor...</p>
+            <p className="text-sm text-slate-500 dark:text-slate-400">Carregando configurações do servidor...</p>
           </div>
         ) : (
           <div className="flex flex-col items-start gap-4">
-            <p className="text-sm text-slate-500">
+            <p className="text-sm text-slate-500 dark:text-slate-400">
               {isOnline
                 ? 'Não foi possível carregar as configurações. Verifique se a API está respondendo.'
                 : 'Aguardando conexão com a API para carregar as configurações atuais.'}
@@ -141,10 +142,10 @@ export function ConfigForm() {
           htmlFor="cfg-compute"
           hint="Controla a precisão numérica do modelo. float16 e int8 são mais rápidos e usam menos memória; float32 é mais preciso porém mais lento. Escolha conforme seu hardware e necessidade de acurácia."
         >
-          <Select
+          <SelectWithDescription
             id="cfg-compute"
             value={draft.compute_type}
-            onChange={(e) => updateDraft({ compute_type: e.target.value as WhisperConfig['compute_type'] })}
+            onChange={(val) => updateDraft({ compute_type: val as WhisperConfig['compute_type'] })}
             options={COMPUTE_TYPES.map((c) => ({
               value: c.value,
               label: c.label,
@@ -155,7 +156,7 @@ export function ConfigForm() {
 
       </div>
 
-      <footer className="mt-6 flex flex-col items-stretch gap-2 border-t border-slate-100 pt-4 sm:flex-row sm:items-center sm:justify-end">
+      <footer className="mt-6 flex flex-col items-stretch gap-2 border-t border-slate-100 dark:border-slate-800 pt-4 sm:flex-row sm:items-center sm:justify-end">
         <Button
           variant="secondary"
           onClick={handleReset}

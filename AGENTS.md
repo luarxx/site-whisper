@@ -106,7 +106,7 @@ Leia documentacao auxiliar apenas quando a tarefa exigir:
 - Deploy (CI/CD): `.github/workflows/deploy.yml`
 - Configuracao Vite/TS: `vite.config.ts`, `tsconfig.json`, `tsconfig.app.json`, `tsconfig.node.json`, `tailwind.config.js`, `postcss.config.js`
 
-Documentacao auxiliar em `docs/`. Nao ha testes automatizados configurados (`package.json` nao define `test`).
+Documentacao auxiliar em `docs/`. Testes automatizados configurados via Vitest (frontend) e pytest (backend).
 
 ---
 
@@ -183,7 +183,9 @@ Docs-only:
 - Nao rodar build/testes salvo se solicitado.
 
 Testes automatizados:
-- Nao ha suite de testes configurada. Se uma suite for adicionada no futuro, preferir Vitest (padrao da comunidade Vite/React). Ate la, validar manualmente abrindo o app e exercitando o fluxo afetado.
+- Frontend: `npm run test` (Vitest). Testes em `src/test/`.
+- Backend: `pytest tests/` (requer venv com dependencias instaladas).
+- Validar manualmente abrindo o app e exercitando o fluxo afetado quando necessario.
 
 ---
 
