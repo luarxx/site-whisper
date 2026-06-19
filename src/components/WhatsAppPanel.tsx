@@ -1,5 +1,5 @@
 import { useEffect, useCallback } from 'react';
-import { Smartphone, QrCode, Link2, Unlink, CheckCircle2, AlertCircle, Loader2 } from 'lucide-react';
+import { Smartphone, QrCode, Link2, Unlink, CheckCircle2, AlertCircle, Loader2, Pause, Play, RefreshCw } from 'lucide-react';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Field } from '@/components/ui/Field';
@@ -10,6 +10,7 @@ const STATE_LABEL: Record<string, { label: string; tone: 'success' | 'danger' | 
   idle: { label: 'Desconectado', tone: 'neutral' },
   connecting: { label: 'Conectando...', tone: 'warning' },
   connected: { label: 'Conectado', tone: 'success' },
+  paused: { label: 'Pausado', tone: 'warning' },
   error: { label: 'Erro', tone: 'danger' },
 };
 
@@ -21,10 +22,30 @@ export function WhatsAppPanel() {
   const setWhatsAppConfig = useAppStore((s) => s.setWhatsAppConfig);
   const createWhatsAppInstance = useAppStore((s) => s.createWhatsAppInstance);
   const checkWhatsAppStatus = useAppStore((s) => s.checkWhatsAppStatus);
+  const pauseWhatsApp = useAppStore((s) => s.pauseWhatsApp);
+  const resumeWhatsApp = useAppStore((s) => s.resumeWhatsApp);
   const disconnectWhatsApp = useAppStore((s) => s.disconnectWhatsApp);
 
   useEffect(() => {
-    void checkWhatsAppStatus();
+    let id: ReturnType<typeof setTimeout> | null = null;
+    let retries = 0;
+    const maxRetries = 4;
+
+    const attempt = () => {
+      void checkWhatsAppStatus().then(() => {
+        const state = useAppStore.getState().whatsAppState;
+        if (state !== 'idle' || retries >= maxRetries) return;
+        retries++;
+        const delay = Math.min(1000 * Math.pow(2, retries - 1), 8000);
+        id = setTimeout(attempt, delay);
+      });
+    };
+
+    attempt();
+
+    return () => {
+      if (id) clearTimeout(id);
+    };
   }, [checkWhatsAppStatus]);
 
   useEffect(() => {
@@ -39,8 +60,14 @@ export function WhatsAppPanel() {
     void createWhatsAppInstance();
   }, [createWhatsAppInstance]);
 
+  const handleCheckStatus = useCallback(() => {
+    void checkWhatsAppStatus();
+  }, [checkWhatsAppStatus]);
+
   const isConnected = whatsAppState === 'connected';
+  const isPaused = whatsAppState === 'paused';
   const isConnecting = whatsAppState === 'connecting';
+  const isBusy = isConnected || isConnecting || isPaused;
   const status = STATE_LABEL[whatsAppState] ?? STATE_LABEL.idle;
 
   const qrSrc = whatsAppQrCode
@@ -65,7 +92,7 @@ export function WhatsAppPanel() {
               value={whatsAppConfig.evolutionApiUrl}
               onChange={(e) => setWhatsAppConfig({ evolutionApiUrl: e.target.value })}
               placeholder="http://localhost:8080"
-              disabled={isConnected || isConnecting}
+              disabled={isBusy}
               className="h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-900 placeholder-slate-400 transition-colors hover:border-slate-300 focus:border-brand-400 focus:outline-none focus:ring-2 focus:ring-brand-400/20 disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-500"
             />
           </Field>
@@ -77,29 +104,69 @@ export function WhatsAppPanel() {
               value={whatsAppConfig.apiKey}
               onChange={(e) => setWhatsAppConfig({ apiKey: e.target.value })}
               placeholder="Chave de API da Evolution"
-              disabled={isConnected || isConnecting}
+              disabled={isBusy}
               className="h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-900 placeholder-slate-400 transition-colors hover:border-slate-300 focus:border-brand-400 focus:outline-none focus:ring-2 focus:ring-brand-400/20 disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-500"
             />
           </Field>
 
           <div className="flex items-center gap-3">
-            {!isConnected ? (
-              <Button
-                onClick={handleConnect}
-                loading={isConnecting}
-                leftIcon={<Link2 className="h-4 w-4" />}
-                disabled={!whatsAppConfig.apiKey || isConnecting}
-              >
-                {isConnecting ? 'Conectando...' : 'Conectar'}
-              </Button>
-            ) : (
-              <Button
-                variant="danger"
-                onClick={disconnectWhatsApp}
-                leftIcon={<Unlink className="h-4 w-4" />}
-              >
-                Desconectar
-              </Button>
+            {isConnected && (
+              <>
+                <Button
+                  variant="secondary"
+                  onClick={pauseWhatsApp}
+                  leftIcon={<Pause className="h-4 w-4" />}
+                >
+                  Pausar
+                </Button>
+                <Button
+                  variant="danger"
+                  onClick={disconnectWhatsApp}
+                  leftIcon={<Unlink className="h-4 w-4" />}
+                >
+                  Desconectar
+                </Button>
+              </>
+            )}
+
+            {isPaused && (
+              <>
+                <Button
+                  onClick={resumeWhatsApp}
+                  loading={isConnecting}
+                  leftIcon={<Play className="h-4 w-4" />}
+                >
+                  {isConnecting ? 'Conectando...' : 'Retomar'}
+                </Button>
+                <Button
+                  variant="danger"
+                  onClick={disconnectWhatsApp}
+                  leftIcon={<Unlink className="h-4 w-4" />}
+                >
+                  Desconectar
+                </Button>
+              </>
+            )}
+
+            {!isConnected && !isPaused && (
+              <>
+                <Button
+                  onClick={handleConnect}
+                  loading={isConnecting}
+                  leftIcon={<Link2 className="h-4 w-4" />}
+                  disabled={!whatsAppConfig.apiKey || isConnecting}
+                >
+                  {isConnecting ? 'Conectando...' : 'Conectar'}
+                </Button>
+                <Button
+                  variant="ghost"
+                  onClick={handleCheckStatus}
+                  leftIcon={<RefreshCw className="h-4 w-4" />}
+                  disabled={isConnecting}
+                >
+                  Verificar
+                </Button>
+              </>
             )}
 
             <Badge tone={status.tone} dot>
@@ -116,7 +183,7 @@ export function WhatsAppPanel() {
         </div>
       </Card>
 
-      {whatsAppQrCode && !isConnected && (
+      {whatsAppQrCode && !isConnected && !isPaused && (
         <Card
           icon={<QrCode className="h-5 w-5" />}
           title="Escaneie o QR Code"
@@ -160,6 +227,23 @@ export function WhatsAppPanel() {
                 <li>Receba a transcrição na resposta</li>
               </ol>
             </div>
+          </div>
+        </Card>
+      )}
+
+      {isPaused && (
+        <Card
+          icon={<Pause className="h-5 w-5 text-amber-600" />}
+          title="WhatsApp Pausado"
+          description="A conexão com o WhatsApp está pausada. Seus áudios não serão transcritos enquanto estiver pausado."
+          padded
+        >
+          <div className="space-y-3 text-sm text-slate-600">
+            <p>
+              Clique em <strong>Retomar</strong> para reconectar o WhatsApp. Se a
+              sessão ainda for válida, a conexão será restabelecida sem precisar
+              escanear o QR Code novamente.
+            </p>
           </div>
         </Card>
       )}

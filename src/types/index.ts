@@ -56,7 +56,7 @@ export interface ApiError {
   code?: string;
 }
 
-export type WhatsAppState = 'idle' | 'connecting' | 'connected' | 'error';
+export type WhatsAppState = 'idle' | 'connecting' | 'connected' | 'error' | 'paused';
 
 export interface WhatsAppConfig {
   evolutionApiUrl: string;

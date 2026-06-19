@@ -420,6 +420,15 @@ def get_logs(limit: int = 200) -> Dict:
 
 
 # ── WhatsApp / Evolution API ─────────────────────────────
+def _extract_whatsapp_state(data) -> str:
+    """Extrai o estado da conexao da Evolution API, lidando com varios formatos de resposta."""
+    if isinstance(data, str):
+        return data
+    if isinstance(data, dict):
+        return data.get("state") or data.get("connectionState") or data.get("status") or "connecting"
+    return "connecting"
+
+
 @app.post("/whatsapp/instance")
 async def whatsapp_create_instance(patch: dict):
     global EVOLUTION_API_URL, EVOLUTION_API_KEY, WHATSAPP_WEBHOOK_URL
@@ -467,8 +476,14 @@ async def whatsapp_create_instance(patch: dict):
     connect_data = await _evolution_proxy(
         "GET", f"/instance/connect/{EVOLUTION_INSTANCE_NAME}"
     )
+    print(f"[WhatsApp] connect response keys={list(connect_data.keys()) if isinstance(connect_data, dict) else type(connect_data).__name__!r}")
 
-    qrcode = connect_data.get("base64") or connect_data.get("qrcode") or None
+    if isinstance(connect_data, str):
+        qrcode = connect_data if len(connect_data) > 20 else None
+    elif isinstance(connect_data, dict):
+        qrcode = connect_data.get("base64") or connect_data.get("qrcode") or connect_data.get("code") or None
+    else:
+        qrcode = None
 
     state = "connecting"
     if qrcode is None:
@@ -483,18 +498,29 @@ async def whatsapp_status():
         data = await _evolution_proxy(
             "GET", f"/instance/connectionState/{EVOLUTION_INSTANCE_NAME}"
         )
-        raw = data.get("state", "close")
+        raw = _extract_whatsapp_state(data)
+        print(f"[WhatsApp] connectionState raw={raw!r} data={data!r}")
         state_map = {
             "open": "connected",
             "connecting": "connecting",
             "close": "idle",
             "disconnected": "idle",
+            "qrRead": "connecting",
+            "init": "connecting",
+            "authed": "connecting",
+            "refused": "connecting",
+            "timeout": "connecting",
+            "conflict": "connecting",
         }
         return {
-            "state": state_map.get(raw, "error"),
+            "state": state_map.get(raw, "connecting"),
             "instanceName": EVOLUTION_INSTANCE_NAME,
         }
-    except HTTPException:
+    except HTTPException as e:
+        print(f"[WhatsApp] HTTPException ao obter status: {e.detail}")
+        return {"state": "idle", "instanceName": EVOLUTION_INSTANCE_NAME}
+    except Exception as e:
+        print(f"[WhatsApp] Erro inesperado ao obter status: {type(e).__name__}: {e}")
         return {"state": "idle", "instanceName": EVOLUTION_INSTANCE_NAME}
 
 
@@ -513,6 +539,29 @@ async def whatsapp_disconnect():
     except HTTPException:
         pass
     return {"detail": "WhatsApp desconectado com sucesso."}
+
+
+@app.put("/whatsapp/instance/pause")
+async def whatsapp_pause():
+    try:
+        await _evolution_proxy(
+            "DELETE", f"/instance/logout/{EVOLUTION_INSTANCE_NAME}"
+        )
+        return {"state": "paused", "instanceName": EVOLUTION_INSTANCE_NAME}
+    except HTTPException as e:
+        raise HTTPException(status_code=e.status_code, detail="Falha ao pausar WhatsApp.")
+
+
+@app.put("/whatsapp/instance/resume")
+async def whatsapp_resume():
+    connect_data = await _evolution_proxy(
+        "GET", f"/instance/connect/{EVOLUTION_INSTANCE_NAME}"
+    )
+    qrcode = connect_data.get("base64") or connect_data.get("qrcode") or None
+    state = "connecting"
+    if qrcode is None:
+        state = "connected"
+    return {"qrcode": qrcode, "state": state, "instanceName": EVOLUTION_INSTANCE_NAME}
 
 
 # ── Webhook da Evolution API ────────────────────────────

@@ -51,6 +51,8 @@ interface AppState {
   cancelTranscription: () => void;
   createWhatsAppInstance: () => Promise<void>;
   checkWhatsAppStatus: () => Promise<void>;
+  pauseWhatsApp: () => Promise<void>;
+  resumeWhatsApp: () => Promise<void>;
   disconnectWhatsApp: () => Promise<void>;
   setWhatsAppConfig: (patch: Partial<WhatsAppConfig>) => void;
 }
@@ -259,15 +261,64 @@ export const useAppStore = create<AppState>()(
   },
 
   checkWhatsAppStatus: async () => {
+    if (get().whatsAppState === 'paused') return;
     const client = getApiClient();
     try {
       const data = await client.getWhatsAppStatus();
+      if (data.state === 'connected') {
+        set({ whatsAppState: 'connected', whatsAppQrCode: null, whatsAppError: null });
+      } else if (data.state === 'connecting') {
+        set({ whatsAppState: 'connecting', whatsAppError: null });
+      } else {
+        const isActivelyConnecting = get().whatsAppState === 'connecting';
+        if (!isActivelyConnecting) {
+          set({
+            whatsAppState: data.state,
+            whatsAppQrCode: null,
+            whatsAppError: data.state === 'error' ? 'Conexão perdida' : null,
+          });
+        }
+      }
+    } catch {
+      const isActivelyConnecting = get().whatsAppState === 'connecting';
+      if (!isActivelyConnecting) {
+        set({ whatsAppState: 'idle', whatsAppQrCode: null });
+      }
+    }
+  },
+
+  pauseWhatsApp: async () => {
+    const client = getApiClient();
+    try {
+      await client.pauseWhatsApp();
+      set({ whatsAppState: 'paused', whatsAppError: null });
+      get().pushToast({ type: 'info', message: 'WhatsApp pausado. Clique "Retomar" para reconectar.' });
+    } catch (err) {
+      const msg = client.extractErrorMessage(err);
+      set({ whatsAppError: msg });
+      get().pushToast({ type: 'error', message: `Falha ao pausar: ${msg}` });
+    }
+  },
+
+  resumeWhatsApp: async () => {
+    const client = getApiClient();
+    set({ whatsAppState: 'connecting', whatsAppQrCode: null, whatsAppError: null });
+    try {
+      const data = await client.resumeWhatsApp();
       set({
         whatsAppState: data.state,
-        whatsAppError: data.state === 'error' ? 'Conexão perdida' : null,
+        whatsAppQrCode: data.qrcode ?? null,
       });
-    } catch {
-      set({ whatsAppState: 'idle', whatsAppQrCode: null });
+      if (data.state === 'connected') {
+        get().pushToast({ type: 'success', message: 'WhatsApp reconectado.' });
+      } else {
+        get().pushToast({ type: 'info', message: 'Escaneie o QR Code com seu WhatsApp.' });
+      }
+    } catch (err) {
+      const msg = client.extractErrorMessage(err);
+      console.error('[Store] resumeWhatsApp falhou:', err);
+      set({ whatsAppState: 'paused', whatsAppError: msg });
+      get().pushToast({ type: 'error', message: `Falha ao retomar: ${msg}` });
     }
   },
 

@@ -135,3 +135,27 @@ Registro de bugs encontrados, causas raiz e solucoes aplicadas. O agente deve co
 **Arquivos afetados:** `src/components/WhatsAppPanel.tsx`
 
 **Tags:** `frontend` `ui`
+
+### 2026-06-19 WhatsApp "não foi possível conectar o dispositivo" ao escanear QR
+
+**Sintoma:** Ao escanear o QR Code no WhatsApp, o app exibe "não foi possível conectar o dispositivo". A instância fica em loop de reconexão (status "connecting") sem nunca conectar.
+
+**Causa:** A instância `whisper-bot` ficava com estado corrompido na Evolution API após múltiplas tentativas de conexão falhas (possivelmente devido ao campo `integration` ausente nas tentativas anteriores). Mesmo após corrigir o `main.py`, a instância antiga persistia com dados de auth inconsistentes no banco PostgreSQL.
+
+**Solucao:** Deletar a instância corrompida via `DELETE /instance/delete/whisper-bot` na Evolution API e recriar via `POST /instance/create`. A nova instância gera QR Code limpo e conecta normalmente. Também atualizado o Baileys de `7.0.0-rc.9` para `7.0.0-rc10` no `/opt/evolution-api/` como medida preventiva.
+
+**Arquivos afetados:** Evolution API (infra/VPS)
+
+**Tags:** `backend` `infra` `whatsapp`
+
+### 2026-06-19 QR code não some e botões não aparecem após scan
+
+**Sintoma:** Após escanear o QR code e conectar no WhatsApp, o frontend continua exibindo o QR code e não mostra os botões de Pausar/Desconectar. A badge permanece "Conectando..." indefinidamente.
+
+**Causa:** O `state_map` em `GET /whatsapp/instance` (`main.py`) só mapeava `open`, `connecting`, `close`, `disconnected`. Estados intermediários da Evolution API após o scan (`qrRead`, `init`, `authed`, etc.) caíam no fallback `state_map.get(raw, "error")` → frontend recebia `"error"` → o polling parava (efeito condicionado em `whatsAppState !== 'connecting'`) → a UI ficava travada no estado `connecting` com QR visível.
+
+**Solucao:** (1) Adicionada função `_extract_whatsapp_state()` que lida com resposta string pura, dict com `state`, dict com `connectionState` e dict com `status`. (2) Adicionados mapeamentos para estados intermediários (`qrRead`, `init`, `authed`, `refused`, `timeout`, `conflict`) todos → `"connecting"`, mantendo o polling ativo até chegar em `"open"`. Fallback de `.get(raw, "connecting")` em vez de `"error"`. (3) No frontend, `checkWhatsAppStatus` não limpa `whatsAppQrCode` nem muda estado para `idle`/`error` enquanto o estado atual for `connecting` — evitando que erros transientes do backend derrubem o QR. (4) `except Exception` adicionado no backend para capturar crashes de parsing (ex: `AttributeError` ao chamar `.get()` em string).
+
+**Arquivos afetados:** `main.py`, `src/store/useAppStore.ts`
+
+**Tags:** `backend` `frontend` `api` `whatsapp` `state`

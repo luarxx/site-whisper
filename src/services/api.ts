@@ -206,6 +206,21 @@ export class ApiClient {
   }
 
   /**
+   * Pausa a conexão WhatsApp (logout sem perder a sessão).
+   */
+  async pauseWhatsApp(): Promise<void> {
+    await this.instance.put('/whatsapp/instance/pause');
+  }
+
+  /**
+   * Retoma a conexão WhatsApp após pausa.
+   */
+  async resumeWhatsApp(): Promise<WhatsAppInstanceData> {
+    const { data } = await this.instance.put<WhatsAppInstanceData>('/whatsapp/instance/resume');
+    return data;
+  }
+
+  /**
    * Desconecta a instância do WhatsApp.
    */
   async disconnectWhatsApp(): Promise<void> {
