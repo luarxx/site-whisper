@@ -111,3 +111,27 @@ Registro de bugs encontrados, causas raiz e solucoes aplicadas. O agente deve co
 **Arquivos afetados:** `main.py`
 
 **Tags:** `backend` `api`
+
+### 2026-06-19 "This name 'whisper-bot' is already in use" após refresh
+
+**Sintoma:** Ao criar instância WhatsApp, funciona. Após refresh da página, clicar "Conectar" retorna erro.
+
+**Causa:** A verificação `exists` em `main.py` usava `inst.get("instance", {}).get("name")` mas a Evolution API v2.3.7 retorna objetos flat (`{ name: "whisper-bot" }`).
+
+**Solucao:** Alterar para `inst.get("name")` compatível com formato da v2.3.7.
+
+**Arquivos afetados:** `main.py`
+
+**Tags:** `backend` `api`
+
+### 2026-06-19 QR code não renderiza (imagem quebrada)
+
+**Sintoma:** Após criar instância, o QR code aparece como broken image.
+
+**Causa:** Evolution API v2.3.7 retorna `base64` já prefixado (`data:image/png;base64,...`). O frontend concatenava outro prefixo, gerando URL inválida.
+
+**Solucao:** Detectar prefixo `data:` e só prefixar quando ausente.
+
+**Arquivos afetados:** `src/components/WhatsAppPanel.tsx`
+
+**Tags:** `frontend` `ui`

@@ -43,6 +43,12 @@ export function WhatsAppPanel() {
   const isConnecting = whatsAppState === 'connecting';
   const status = STATE_LABEL[whatsAppState] ?? STATE_LABEL.idle;
 
+  const qrSrc = whatsAppQrCode
+    ? whatsAppQrCode.startsWith("data:")
+      ? whatsAppQrCode
+      : `data:image/png;base64,${whatsAppQrCode}`
+    : undefined;
+
   return (
     <div className="space-y-6">
       <Card
@@ -120,7 +126,7 @@ export function WhatsAppPanel() {
           <div className="flex flex-col items-center gap-4">
             <div className="rounded-2xl border-2 border-slate-200 bg-white p-2 sm:p-4 shadow-soft">
               <img
-                src={`data:image/png;base64,${whatsAppQrCode}`}
+                src={qrSrc}
                 alt="QR Code do WhatsApp"
                 className="h-48 w-48 sm:h-64 sm:w-64"
               />

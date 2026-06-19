@@ -440,8 +440,8 @@ async def whatsapp_create_instance(patch: dict):
         instances = []
 
     exists = any(
-        inst.get("instance", {}).get("name") == EVOLUTION_INSTANCE_NAME
-        for inst in (instances if isinstance(instances, list) else instances.get("instances", []))
+        inst.get("name") == EVOLUTION_INSTANCE_NAME
+        for inst in (instances if isinstance(instances, list) else [])
     )
 
     if not exists:
