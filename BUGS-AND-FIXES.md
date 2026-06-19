@@ -63,3 +63,39 @@ Registro de bugs encontrados, causas raiz e solucoes aplicadas. O agente deve co
 **Arquivos afetados:** `src/App.tsx`
 
 **Tags:** `frontend` `state` `store`
+
+### 2026-06-18 Crash loop do OOM killer ao carregar modelo grande
+
+**Sintoma:** Ao salvar um modelo grande (`medium`, `large-v3`) no formulário de Configurações em uma VPS com pouca RAM, o serviço cai e nunca mais volta. O systemd reinicia o processo, que tenta carregar o mesmo modelo grande novamente → OOM kill → loop infinito.
+
+**Causa:** O kernel Linux envia `SIGKILL` (OOM kill) quando o processo consome RAM demais. Isso não é uma exceção Python — o `except Exception` nunca roda. No restart, `_load_config()` lê `whisper_config.json` com o modelo grande salvo, repete o carregamento, e o ciclo recomeça.
+
+**Solucao:** Adicionado mecanismo de detecção de crash via arquivo marcador `.whisper_startup`. Antes de carregar o modelo, o marcador é escrito com timestamp. Se no próximo startup o marcador existe e tem menos de 120s, o sistema força safe defaults (`small`/`cpu`/`int8`) e salva em disco. Após carregamento bem-sucedido, o marcador é removido. Também adicionada limpeza de `temp_*` no startup para remover arquivos órfãos de crashes anteriores.
+
+**Arquivos afetados:** `main.py`, `.gitignore`
+
+**Tags:** `backend` `api`
+
+### 2026-06-18 apiBaseUrl persistido corrompe chamadas em produção
+
+**Sintoma:** Após visitar o app em desenvolvimento (`localhost:5173`, `apiBaseUrl`="http://localhost:8000"), ao acessar a versão de produção (`http://SEU_IP:8000`) no mesmo navegador, todas as chamadas à API vão para `http://localhost:8000` (que não existe no browser do usuário).
+
+**Causa:** Zustand `persist` salva `apiBaseUrl` no `localStorage`. Em produção `VITE_API_BASE_URL`="" (same-origin), mas o `localStorage` restaura o valor da sessão dev (`http://localhost:8000`), sobrescrevendo o valor correto.
+
+**Solucao:** Adicionada função `merge` no middleware `persist` do Zustand. Quando `VITE_API_BASE_URL` está vazio (produção), o `merge` força `apiBaseUrl` para string vazia, ignorando o valor persistido. Em desenvolvimento (`VITE_API_BASE_URL` definido), o valor persistido é respeitado normalmente.
+
+**Arquivos afetados:** `src/store/useAppStore.ts`
+
+**Tags:** `frontend` `state` `store`
+
+### 2026-06-18 Arquivos temporários acumulam após crash durante transcrição
+
+**Sintoma:** Arquivos como `temp_AUD-20260612-WA0071.opus` e `temp_tendi\ nada.ogg` permanecem no diretório `~/whisper-api/` da VPS após crashes.
+
+**Causa:** Quando o processo é morto por OOM durante `model.transcribe()`, o bloco `finally` que remove o arquivo temporário nunca executa. A barra invertida (`\`) no nome do arquivo indica que o cliente enviou um caminho Windows como filename, que não é sanitizado.
+
+**Solucao:** (1) Adicionada função `_cleanup_temp_files()` que remove todos os `temp_*` no startup. (2) Sanitização do `file.filename` nos endpoints de transcrição: usa `os.path.basename()` para remover caminhos e substitui backslashes por underscores. (3) Adicionado UUID curto ao nome do temp file para evitar colisões.
+
+**Arquivos afetados:** `main.py`
+
+**Tags:** `backend` `api`

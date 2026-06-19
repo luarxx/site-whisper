@@ -318,6 +318,13 @@ export const useAppStore = create<AppState>()(
         }
         return persisted as AppState;
       },
+      merge: (persisted, current) => {
+        const merged = { ...current, ...(persisted as Partial<AppState>) };
+        if (!import.meta.env.VITE_API_BASE_URL) {
+          merged.apiBaseUrl = '';
+        }
+        return merged as AppState;
+      },
       partialize: (state) => ({
         apiBaseUrl: state.apiBaseUrl,
         transcribeOpts: state.transcribeOpts,

@@ -3,6 +3,8 @@ import json
 import time
 import subprocess
 import re
+import glob as glob_module
+import uuid
 import httpx
 import psutil
 from typing import List, Dict, Optional
@@ -26,6 +28,9 @@ app.add_middleware(
 
 # ── Configuração do Modelo ───────────────────────────────
 CONFIG_FILE = "whisper_config.json"
+STARTUP_MARKER = ".whisper_startup"
+CRASH_WINDOW_SECONDS = 120
+SAFE_DEFAULTS = {"model": "small", "device": "cpu", "compute_type": "int8"}
 
 DEFAULTS = {
     "model": "small",
@@ -62,7 +67,36 @@ def _save_config(cfg: dict):
         json.dump(existing, f, indent=2)
 
 
+def _cleanup_temp_files():
+    for f in glob_module.glob("temp_*"):
+        try:
+            os.remove(f)
+            print(f"[Cleanup] Arquivo temporário removido: {f}")
+        except OSError:
+            pass
+
+
+def _check_crash_and_recover() -> bool:
+    if not os.path.exists(STARTUP_MARKER):
+        return False
+    try:
+        age = time.time() - os.path.getmtime(STARTUP_MARKER)
+    except OSError:
+        return False
+    if age < CRASH_WINDOW_SECONDS:
+        print(f"[Crash] Detectado crash recente ({age:.0f}s atrás). Forçando safe defaults.")
+        return True
+    print(f"[Startup] Marcador antigo ignorado ({age:.0f}s atrás).")
+    return False
+
+
 config = _load_config()
+
+crashed = _check_crash_and_recover()
+if crashed:
+    config.update(SAFE_DEFAULTS)
+    _save_config(config)
+    print("[Crash] Configuração redefinida para safe defaults e salva em disco.")
 
 MODEL_SIZE = config["model"]
 DEVICE = config["device"]
@@ -78,9 +112,17 @@ if DEVICE == "cpu" and COMPUTE_TYPE in ("float16", ):
 
 print(f"[Config] Modelo: {MODEL_SIZE} / {DEVICE} / {COMPUTE_TYPE}")
 print(f"Carregando o modelo Whisper ({MODEL_SIZE})...")
+
+_cleanup_temp_files()
+
+with open(STARTUP_MARKER, "w") as f:
+    f.write(str(time.time()))
+
 try:
     model = WhisperModel(MODEL_SIZE, device=DEVICE, compute_type=COMPUTE_TYPE)
     print("Modelo carregado com sucesso!")
+    if os.path.exists(STARTUP_MARKER):
+        os.remove(STARTUP_MARKER)
 except Exception as e:
     print(f"Falha ao carregar modelo ({e}). Usando defaults: small / cpu / int8")
     MODEL_SIZE, DEVICE, COMPUTE_TYPE = "small", "cpu", "int8"
@@ -94,6 +136,8 @@ except Exception as e:
         "beam_size": DEFAULT_BEAM_SIZE,
         "vad_filter": DEFAULT_VAD_FILTER,
     })
+    if os.path.exists(STARTUP_MARKER):
+        os.remove(STARTUP_MARKER)
     print("Modelo small carregado como fallback.")
 
 START_TIME = time.time()
@@ -188,7 +232,9 @@ async def transcribe(
     beam_size: int = Form(5),
     vad_filter: bool = Form(True),
 ):
-    temp_path = f"temp_{file.filename}"
+    safe_name = (file.filename or "audio").replace("\\", "/")
+    safe_name = os.path.basename(safe_name)
+    temp_path = f"temp_{uuid.uuid4().hex[:8]}_{safe_name}"
     with open(temp_path, "wb") as buffer:
         shutil.copyfileobj(file.file, buffer)
 

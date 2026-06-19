@@ -14,3 +14,5 @@ acessar-vps.bat
 .vite-dev.log*
 *.err
 whisper_config.json
+.whisper_startup
+temp_*
