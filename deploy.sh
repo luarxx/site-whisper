@@ -22,8 +22,11 @@ rsync -avz --delete dist/ "${REMOTE_USER}@${REMOTE_HOST}:${REMOTE_DIR}/static/"
 echo "🐍 Enviando backend (main.py)..."
 rsync -avz main.py "${REMOTE_USER}@${REMOTE_HOST}:${REMOTE_DIR}/main.py"
 
+echo "⚙️ Enviando configuração PM2 (ecosystem.config.cjs)..."
+rsync -avz ecosystem.config.cjs "${REMOTE_USER}@${REMOTE_HOST}:${REMOTE_DIR}/ecosystem.config.cjs"
+
 echo "🔄 Reiniciando serviço whisper via PM2..."
-ssh "${REMOTE_USER}@${REMOTE_HOST}" "pm2 restart whisper-api"
+ssh "${REMOTE_USER}@${REMOTE_HOST}" "cd ${REMOTE_DIR} && pm2 delete whisper-api 2>/dev/null; pm2 start ecosystem.config.cjs --update-env"
 
 echo "✅ Deploy concluído."
 echo "🔗 http://${REMOTE_HOST}:8000"

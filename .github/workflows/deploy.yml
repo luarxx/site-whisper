@@ -47,6 +47,15 @@ jobs:
           source: "requirements.txt"
           target: "~/whisper-api/"
 
+      - name: Deploy PM2 ecosystem config
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USERNAME }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          source: "ecosystem.config.cjs"
+          target: "~/whisper-api/"
+
       - name: Install Python dependencies
         uses: appleboy/ssh-action@v1.2.1
         with:
@@ -65,7 +74,10 @@ jobs:
           username: ${{ secrets.SSH_USERNAME }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
-            pm2 restart whisper-api
+            cd ~/whisper-api
+            pm2 delete whisper-api 2>/dev/null || true
+            pm2 start ecosystem.config.cjs --update-env
+            sleep 2
             pm2 show whisper-api
 
       - name: Verify deployment (health check)
@@ -75,14 +87,14 @@ jobs:
           username: ${{ secrets.SSH_USERNAME }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
-            sleep 3
-            for i in 1 2 3 4 5; do
+            sleep 5
+            for i in 1 2 3 4 5 6 7 8 9 10; do
               if curl -sf http://localhost:8000/health; then
                 echo "✅ Deploy verificado com sucesso."
                 exit 0
               fi
-              echo "⏳ Aguardando serviço iniciar... tentativa $i/5"
-              sleep 3
+              echo "⏳ Aguardando serviço iniciar... tentativa $i/10"
+              sleep 5
             done
-            echo "❌ Serviço não respondeu após 5 tentativas."
+            echo "❌ Serviço não respondeu após 10 tentativas."
             exit 1

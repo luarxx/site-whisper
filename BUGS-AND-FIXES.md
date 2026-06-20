@@ -407,3 +407,25 @@ Registro de bugs encontrados, causas raiz e solucoes aplicadas. O agente deve co
 **Arquivos afetados:** `requirements.txt`, `.github/workflows/deploy.yml`
 
 **Tags:** `backend` `ci-cd` `dependencies`
+
+### 2026-06-20 Health check do deploy falha por timeout com --workers 2
+
+**Sintoma:** Deploy automático (GitHub Actions) falha na etapa "Verify deployment (health check)" — o serviço reinicia via PM2 mas o `curl http://localhost:8000/health` não responde dentro de ~22s (5 tentativas × 3s + sleep). PM2 mostra o processo como `online` mas o endpoint não responde.
+
+**Causa:** O modelo Whisper é carregado em nível de módulo (`main.py:247`, `WhisperModel(...)` chamado durante o `import`). Com `--workers 2` no uvicorn, cada worker importa `main.py` independentemente e bloqueia até o modelo terminar de carregar. O startup ultrapassou os ~20s do health check por contensão de recursos na VPS (modelo `medium` leva ~13s em condições normais; com 2 workers e pouca RAM, dobra o tempo).
+
+Problemas adicionais do `--workers 2`:
+- Cada worker carrega o modelo separadamente → dobra/quadruplica RAM (risco de OOM)
+- `_audio_counter` é variável por processo → numeração duplicada nas transcrições do WhatsApp
+- `ModelHandle` com `threading.Lock()` opera dentro de um processo, não entre processos — o controle de concorrência já era ineficaz com múltiplos workers
+
+**Solucao:**
+1. Criado `ecosystem.config.cjs` (versionado no repositório) sem `--workers` — worker único.
+2. `deploy.yml` agora envia o ecosystem file para a VPS e recria o PM2 via `pm2 delete whisper-api && pm2 start ecosystem.config.cjs --update-env`.
+3. Health check aumentado para 10 tentativas × 5s (total ~55s) como margem de segurança.
+4. `deploy.sh` e `docs/main-vps.md` atualizados para refletir a nova config.
+5. Adicionada documentação no `docs/main-vps.md` explicando por que não usar `--workers N`.
+
+**Arquivos afetados:** `ecosystem.config.cjs` (novo), `.github/workflows/deploy.yml`, `deploy.sh`, `docs/main-vps.md`
+
+**Tags:** `backend` `ci-cd` `deploy` `pm2` `workers`

@@ -160,16 +160,24 @@ source venv/bin/activate
 uvicorn main:app --host 0.0.0.0 --port 8000
 ```
 
+> **Atenção:** Não use `--workers N` — o modelo Whisper é carregado na importação do módulo.
+> Com múltiplos workers, cada processo carrega o modelo separadamente, quadruplicando o uso
+> de RAM e atrasando o startup (causando timeout no health check do deploy).
+
 ### Produção (PM2 — recomendado)
 
 ```bash
 cd ~/whisper-api
-pm2 start ecosystem.config.cjs     # Iniciar
+pm2 start ecosystem.config.cjs     # Iniciar (ou recriar se já existir)
 pm2 restart whisper-api             # Reiniciar
 pm2 stop whisper-api                # Parar
 pm2 logs whisper-api -f             # Logs em tempo real
 pm2 status                          # Status de todos os processos
 ```
+
+> O `ecosystem.config.cjs` está versionado no repositório em `./ecosystem.config.cjs`.
+> O deploy (GitHub Actions ou `deploy.sh`) envia o arquivo para a VPS e recria o processo
+> via `pm2 delete whisper-api && pm2 start ecosystem.config.cjs --update-env`.
 
 O PM2 está configurado para iniciar automaticamente com o sistema via `pm2-ubuntu.service`.
 Logs salvos em `~/whisper-api/logs/{out,error}.log`.
