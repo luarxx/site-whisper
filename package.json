@@ -37,6 +37,6 @@
     "typescript": "^5.7.2",
     "vite": "^5.4.11",
     "vite-plugin-dom-inspector": "^1.0.2",
-    "vitest": "^4.1.9"
+    "vitest": "^3.2.6"
   }
 }
