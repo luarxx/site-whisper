@@ -119,6 +119,16 @@ class ModelHandle:
 
 
 model_handle = ModelHandle()
+
+_audio_counter = 0
+_audio_counter_lock = threading.Lock()
+
+
+def _next_audio_number() -> int:
+    global _audio_counter
+    with _audio_counter_lock:
+        _audio_counter += 1
+        return _audio_counter
 # ──────────────────────────────────────────────────────────
 
 # ── Configuração do Modelo ───────────────────────────────
@@ -805,6 +815,8 @@ async def evolution_webhook(request: Request):
     if not is_from_me:
         return {"status": "ignored", "reason": "not_self_chat"}
 
+    message_id = key.get("id", "")
+    audio_number = _next_audio_number()
     number = remote_jid.split("@")[0]
 
     audio_url = None
@@ -883,12 +895,17 @@ async def evolution_webhook(request: Request):
         if not full_text:
             full_text = "[Não foi possível transcrever o áudio]"
 
+        quote_payload: dict = {}
+        if message_id:
+            quote_payload = {"quotedMessage": {"key": {"id": message_id}}}
+
         await _evolution_proxy(
             "POST",
             f"/message/sendText/{EVOLUTION_INSTANCE_NAME}",
             json={
                 "number": number,
-                "text": f"🗣️ Transcrição:\n\n{full_text}",
+                "text": f"🗣️ #{audio_number} Transcrição:\n\n{full_text}",
+                **quote_payload,
             },
         )
 
@@ -900,12 +917,16 @@ async def evolution_webhook(request: Request):
         traceback.print_exc()
         print(f"[Webhook] Erro ao processar áudio: {type(e).__name__}")
         try:
+            error_quote: dict = {}
+            if message_id:
+                error_quote = {"quotedMessage": {"key": {"id": message_id}}}
             await _evolution_proxy(
                 "POST",
                 f"/message/sendText/{EVOLUTION_INSTANCE_NAME}",
                 json={
                     "number": number,
-                    "text": f"❌ Não foi possível transcrever o áudio (erro: {type(e).__name__}). Verifique se o modelo está ativo ou tente novamente com um áudio mais curto.",
+                    "text": f"❌ #{audio_number} Não foi possível transcrever o áudio (erro: {type(e).__name__}). Verifique se o modelo está ativo ou tente novamente com um áudio mais curto.",
+                    **error_quote,
                 },
             )
         except Exception:
