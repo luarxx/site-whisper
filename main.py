@@ -9,6 +9,9 @@ import threading
 import httpx
 import psutil
 from typing import List, Dict, Optional
+from dotenv import load_dotenv
+
+load_dotenv()
 from fastapi import FastAPI, File, UploadFile, Form, HTTPException, Request, Body, Depends, Security
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
