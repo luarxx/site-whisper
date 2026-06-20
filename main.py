@@ -309,10 +309,13 @@ WHATSAPP_WEBHOOK_URL = evolution_config["whatsapp_webhook_url"]
 
 def _save_evolution_config():
     full = _load_config()
-    full["evolution"] = {
+    evo = {
         "evolution_api_url": EVOLUTION_API_URL,
         "whatsapp_webhook_url": WHATSAPP_WEBHOOK_URL,
     }
+    if EVOLUTION_API_KEY:
+        evo["evolution_api_key"] = EVOLUTION_API_KEY
+    full["evolution"] = evo
     _save_config(full)
 
 
