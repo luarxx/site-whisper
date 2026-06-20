@@ -377,6 +377,7 @@ def status(_=Depends(_verify_api_key)):
 @app.post("/v1/audio/transcriptions")
 @limiter.limit("5/minute")
 async def transcribe(
+    request: Request,
     file: UploadFile = File(...),
     language: str = Form("auto"),
     temperature: float = Form(0.0),
