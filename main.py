@@ -9,6 +9,7 @@ import threading
 import httpx
 import psutil
 from datetime import datetime
+from zoneinfo import ZoneInfo
 from typing import List, Dict, Optional
 from dotenv import load_dotenv
 
@@ -1029,7 +1030,7 @@ async def evolution_webhook(request: Request):
 
     ack_text = (
         f"🎙️ Áudio #{audio_number} recebido às "
-        f"{datetime.now().strftime('%H:%M:%S')} — transcrevendo..."
+        f"{datetime.now(ZoneInfo('America/Sao_Paulo')).strftime('%H:%M:%S')} — transcrevendo..."
     )
     ack_quote: dict = {}
     if message_id:
