@@ -345,7 +345,18 @@ def _get_http_client() -> httpx.AsyncClient:
 async def _evolution_proxy(method: str, path: str, **kwargs) -> dict:
     url = f"{EVOLUTION_API_URL}{path}"
     client = _get_http_client()
-    resp = await client.request(method, url, headers=_evolution_headers(), **kwargs)
+    try:
+        resp = await client.request(method, url, headers=_evolution_headers(), **kwargs)
+    except httpx.ConnectError:
+        raise HTTPException(
+            status_code=503,
+            detail=f"Não foi possível conectar à Evolution API em {EVOLUTION_API_URL}. Verifique se o serviço está rodando.",
+        )
+    except httpx.TimeoutException:
+        raise HTTPException(
+            status_code=504,
+            detail=f"Timeout ao conectar à Evolution API em {EVOLUTION_API_URL}.",
+        )
     if resp.status_code >= 400:
         detail = "Erro na Evolution API"
         try:
@@ -353,6 +364,8 @@ async def _evolution_proxy(method: str, path: str, **kwargs) -> dict:
             detail = body.get("response", {}).get("message", body.get("message", detail))
         except Exception:
             detail = resp.text[:200]
+        if resp.status_code in (401, 403):
+            detail = f"API Key inválida ou sem permissão. Verifique a EVOLUTION_API_KEY configurada no servidor."
         raise HTTPException(status_code=resp.status_code, detail=detail)
     return resp.json()
 # ──────────────────────────────────────────────────────────
@@ -655,7 +668,10 @@ async def whatsapp_create_instance(patch: dict = Body(default={}), _=Depends(_ve
     _save_evolution_config()
 
     if not EVOLUTION_API_KEY:
-        raise HTTPException(status_code=400, detail="API Key da Evolution é obrigatória.")
+        raise HTTPException(
+            status_code=400,
+            detail="API Key da Evolution não configurada. Defina a variável de ambiente EVOLUTION_API_KEY no servidor ou configure no whisper_config.json.",
+        )
 
     try:
         instances = await _evolution_proxy("GET", "/instance/fetchInstances")

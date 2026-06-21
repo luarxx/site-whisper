@@ -1,5 +1,5 @@
 import { useEffect, useCallback, useRef } from 'react';
-import { Smartphone, QrCode, Link2, Unlink, CheckCircle2, AlertCircle, Loader2, Pause, Play, RefreshCw } from 'lucide-react';
+import { Smartphone, QrCode, Link2, Unlink, CheckCircle2, AlertCircle, Loader2, Pause, Play, RefreshCw, X } from 'lucide-react';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
@@ -180,6 +180,13 @@ export function WhatsAppPanel() {
               <Loader2 className="h-4 w-4 animate-spin" />
               Aguardando leitura do QR Code...
             </p>
+            <Button
+              variant="danger"
+              onClick={disconnectWhatsApp}
+              leftIcon={<X className="h-4 w-4" />}
+            >
+              Cancelar
+            </Button>
           </div>
         </Card>
       )}
