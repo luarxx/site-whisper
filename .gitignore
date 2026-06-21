@@ -22,3 +22,4 @@ temp_*
 *.openchamber.backup
 TUDO-SOBRE-O-PROJETO.md
 AUDIT-REPORT.md
+__pycache__/

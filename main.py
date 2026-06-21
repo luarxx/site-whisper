@@ -1020,13 +1020,14 @@ async def evolution_webhook(request: Request):
             return {"status": "ignored", "reason": "old_message"}
 
     message_id = key.get("id", "")
-    audio_number = _next_audio_number()
     number = remote_jid.split("@")[0]
 
     should_process, dup_reason = _dedup_try_start(message_id)
     if not should_process:
         print(f"[Webhook] Mensagem {message_id} ignorada: {dup_reason}")
         return {"status": "ignored", "reason": dup_reason}
+
+    audio_number = _next_audio_number()
 
     ack_text = (
         f"🎙️ Áudio #{audio_number} recebido às "
