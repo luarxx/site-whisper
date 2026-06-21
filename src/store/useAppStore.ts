@@ -278,7 +278,8 @@ export const useAppStore = create<AppState>()(
         set({ whatsAppState: 'connecting', whatsAppError: null });
       } else {
         const isActivelyConnecting = get().whatsAppState === 'connecting';
-        if (!isActivelyConnecting) {
+        const isSessionDead = data.state === 'idle';
+        if (!isActivelyConnecting || isSessionDead) {
           set({
             whatsAppState: data.state,
             whatsAppQrCode: null,

@@ -667,6 +667,30 @@ async def whatsapp_create_instance(patch: dict = Body(default={}), _=Depends(_ve
         for inst in (instances if isinstance(instances, list) else [])
     )
 
+    if exists:
+        inst = next(
+            (i for i in instances if isinstance(i, dict) and i.get("name") == EVOLUTION_INSTANCE_NAME),
+            None,
+        )
+        dead = False
+        if inst:
+            code = inst.get("disconnectionReasonCode")
+            obj = inst.get("disconnectionObject", "")
+            if code == 401 or (isinstance(obj, str) and "device_removed" in obj):
+                dead = True
+        if dead:
+            print("[WhatsApp] Sessao morta detectada, removendo instancia...")
+            try:
+                await _evolution_proxy("DELETE", f"/instance/logout/{EVOLUTION_INSTANCE_NAME}")
+            except Exception:
+                pass
+            try:
+                await _evolution_proxy("DELETE", f"/instance/delete/{EVOLUTION_INSTANCE_NAME}")
+                print("[WhatsApp] Instancia removida com sucesso.")
+            except Exception as e:
+                print(f"[WhatsApp] Falha ao deletar instancia: {e}")
+            exists = False
+
     if not exists:
         await _evolution_proxy(
             "POST",
@@ -736,8 +760,26 @@ async def whatsapp_status(_=Depends(_verify_api_key)):
             "timeout": "connecting",
             "conflict": "connecting",
         }
+        state = state_map.get(raw.lower(), "idle")
+
+        if state == "connecting":
+            try:
+                instances = await _evolution_proxy("GET", "/instance/fetchInstances")
+                inst = next(
+                    (i for i in instances if isinstance(i, dict) and i.get("name") == EVOLUTION_INSTANCE_NAME),
+                    None,
+                )
+                if inst:
+                    code = inst.get("disconnectionReasonCode")
+                    obj = inst.get("disconnectionObject", "")
+                    if code == 401 or (isinstance(obj, str) and "device_removed" in obj):
+                        print(f"[WhatsApp] Sessao invalida detectada (401/device_removed), reportando idle")
+                        state = "idle"
+            except Exception:
+                pass
+
         return {
-            "state": state_map.get(raw.lower(), "idle"),
+            "state": state,
             "instanceName": EVOLUTION_INSTANCE_NAME,
         }
     except HTTPException as e:
