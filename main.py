@@ -8,6 +8,7 @@ import uuid
 import threading
 import httpx
 import psutil
+from datetime import datetime
 from typing import List, Dict, Optional
 from dotenv import load_dotenv
 
@@ -132,6 +133,99 @@ def _next_audio_number() -> int:
     with _audio_counter_lock:
         _audio_counter += 1
         return _audio_counter
+
+
+_webhook_error_count = 0
+_webhook_error_lock = threading.Lock()
+_MAX_ERROR_REPLIES = 3
+
+_DEDUP_TTL_SECONDS = 3600
+_dedup_lock = threading.Lock()
+_in_flight_messages: Dict[str, float] = {}
+_completed_messages: Dict[str, float] = {}
+SERVER_START_TIME = time.time()
+
+DEDUP_PERSIST_FILE = "webhook_dedup.json"
+
+
+def _dedup_persist_path() -> str:
+    return os.path.join(os.path.dirname(os.path.abspath(__file__)), DEDUP_PERSIST_FILE)
+
+
+def _dedup_load_persisted():
+    path = _dedup_persist_path()
+    if not os.path.exists(path):
+        return
+    try:
+        with open(path, "r") as f:
+            data = json.load(f)
+        if not isinstance(data, dict):
+            return
+        now = time.time()
+        with _dedup_lock:
+            for k, v in data.items():
+                try:
+                    ts = float(v)
+                except (TypeError, ValueError):
+                    continue
+                if now - ts < _DEDUP_TTL_SECONDS:
+                    _completed_messages[k] = ts
+        print(f"[Dedup] Cache carregado: {len(_completed_messages)} mensagens")
+    except Exception as e:
+        print(f"[Dedup] Falha ao carregar cache: {e}")
+
+
+def _dedup_save_persisted():
+    path = _dedup_persist_path()
+    try:
+        with _dedup_lock:
+            snapshot = dict(_completed_messages)
+        tmp = path + ".tmp"
+        with open(tmp, "w") as f:
+            json.dump(snapshot, f)
+        os.replace(tmp, path)
+    except Exception as e:
+        print(f"[Dedup] Falha ao salvar cache: {e}")
+
+
+_dedup_load_persisted()
+
+
+def _dedup_cleanup_expired():
+    now = time.time()
+    for store in (_in_flight_messages, _completed_messages):
+        expired = [k for k, t in store.items() if now - t > _DEDUP_TTL_SECONDS]
+        for k in expired:
+            del store[k]
+
+
+def _dedup_try_start(message_id: str) -> tuple[bool, str]:
+    if not message_id:
+        return True, ""
+    with _dedup_lock:
+        _dedup_cleanup_expired()
+        if message_id in _completed_messages:
+            return False, "already_completed"
+        if message_id in _in_flight_messages:
+            return False, "already_in_flight"
+        _in_flight_messages[message_id] = time.time()
+        return True, ""
+
+
+def _dedup_complete(message_id: str):
+    if not message_id:
+        return
+    with _dedup_lock:
+        _in_flight_messages.pop(message_id, None)
+        _completed_messages[message_id] = time.time()
+    _dedup_save_persisted()
+
+
+def _dedup_fail(message_id: str):
+    if not message_id:
+        return
+    with _dedup_lock:
+        _in_flight_messages.pop(message_id, None)
 # ──────────────────────────────────────────────────────────
 
 # ── Configuração do Modelo ───────────────────────────────
@@ -299,6 +393,7 @@ EVOLUTION_DEFAULTS = {
     "evolution_api_url": "http://localhost:8080",
     "evolution_api_key": "",
     "whatsapp_webhook_url": "",
+    "whatsapp_self_chat_jid": "",
 }
 
 EVOLUTION_INSTANCE_NAME = "whisper-bot"
@@ -308,6 +403,7 @@ evolution_config = {**EVOLUTION_DEFAULTS, **config.get("evolution", {})}
 EVOLUTION_API_URL = evolution_config["evolution_api_url"].rstrip("/")
 EVOLUTION_API_KEY = os.getenv("EVOLUTION_API_KEY", "") or evolution_config.get("evolution_api_key", "")
 WHATSAPP_WEBHOOK_URL = evolution_config["whatsapp_webhook_url"]
+SELF_CHAT_JID = (evolution_config.get("whatsapp_self_chat_jid") or "").strip() or None
 
 
 def _save_evolution_config():
@@ -318,8 +414,28 @@ def _save_evolution_config():
     }
     if EVOLUTION_API_KEY:
         evo["evolution_api_key"] = EVOLUTION_API_KEY
+    if SELF_CHAT_JID:
+        evo["whatsapp_self_chat_jid"] = SELF_CHAT_JID
     full["evolution"] = evo
     _save_config(full)
+
+
+def _set_self_chat_jid(jid: str):
+    global SELF_CHAT_JID
+    if not jid or jid == SELF_CHAT_JID:
+        return
+    SELF_CHAT_JID = jid
+    _save_evolution_config()
+    print(f"[WhatsApp] Self-chat JID fixado: {jid}")
+
+
+def _clear_self_chat_jid():
+    global SELF_CHAT_JID
+    if SELF_CHAT_JID is None:
+        return
+    SELF_CHAT_JID = None
+    _save_evolution_config()
+    print("[WhatsApp] Self-chat JID limpo (instancia recriada).")
 
 
 def _evolution_headers() -> Dict[str, str]:
@@ -705,6 +821,7 @@ async def whatsapp_create_instance(patch: dict = Body(default={}), _=Depends(_ve
                 print("[WhatsApp] Instancia removida com sucesso.")
             except Exception as e:
                 print(f"[WhatsApp] Falha ao deletar instancia: {e}")
+            _clear_self_chat_jid()
             exists = False
 
     if not exists:
@@ -824,6 +941,7 @@ async def whatsapp_disconnect(_=Depends(_verify_api_key)):
         )
     except HTTPException as e:
         errors.append(f"delete: {e.detail}")
+    _clear_self_chat_jid()
     if errors:
         return {"detail": f"WhatsApp parcialmente desconectado. Erros: {'; '.join(errors)}"}
     return {"detail": "WhatsApp desconectado com sucesso."}
@@ -860,6 +978,7 @@ async def whatsapp_resume(_=Depends(_verify_api_key)):
 # ── Webhook da Evolution API ────────────────────────────
 @app.post("/webhook/evolution")
 async def evolution_webhook(request: Request):
+    global _webhook_error_count
     body = await request.json()
     print(f"[Webhook] Evento recebido: {json.dumps(body, indent=2)[:2000]}")
 
@@ -882,9 +1001,48 @@ async def evolution_webhook(request: Request):
     if not is_from_me:
         return {"status": "ignored", "reason": "not_self_chat"}
 
+    if remote_jid.endswith("@g.us"):
+        return {"status": "ignored", "reason": "group_chat"}
+
+    if "@" not in remote_jid or not remote_jid.endswith("@s.whatsapp.net"):
+        return {"status": "ignored", "reason": "not_individual_chat"}
+
+    if SELF_CHAT_JID is None:
+        _set_self_chat_jid(remote_jid)
+    elif remote_jid != SELF_CHAT_JID:
+        return {"status": "ignored", "reason": "not_self_chat"}
+
+    message_ts = data.get("messageTimestamp")
+    if isinstance(message_ts, (int, float)) and message_ts > 0:
+        if message_ts < SERVER_START_TIME - 60:
+            print(f"[Webhook] Mensagem antiga ignorada (ts={message_ts}, server_start={SERVER_START_TIME:.0f})")
+            return {"status": "ignored", "reason": "old_message"}
+
     message_id = key.get("id", "")
     audio_number = _next_audio_number()
     number = remote_jid.split("@")[0]
+
+    should_process, dup_reason = _dedup_try_start(message_id)
+    if not should_process:
+        print(f"[Webhook] Mensagem {message_id} ignorada: {dup_reason}")
+        return {"status": "ignored", "reason": dup_reason}
+
+    ack_text = (
+        f"🎙️ Áudio #{audio_number} recebido às "
+        f"{datetime.now().strftime('%H:%M:%S')} — transcrevendo..."
+    )
+    ack_quote: dict = {}
+    if message_id:
+        ack_quote = {"quotedMessage": {"key": {"id": message_id}}}
+    try:
+        await _evolution_proxy(
+            "POST",
+            f"/message/sendText/{EVOLUTION_INSTANCE_NAME}",
+            json={"number": number, "text": ack_text, **ack_quote},
+        )
+        print(f"[Webhook] Ack #{audio_number} enviado para {number}")
+    except Exception as ack_err:
+        print(f"[Webhook] Falha ao enviar ack #{audio_number}: {ack_err}")
 
     audio_url = None
     audio_b64 = None
@@ -910,7 +1068,7 @@ async def evolution_webhook(request: Request):
             print(f"[Webhook] Áudio via webhookBase64 ({len(audio_bytes)} bytes)")
 
         if audio_bytes is None:
-            full_message = {"key": data.get("key", {}), "message": message}
+            full_message = {"message": {"key": data.get("key", {}), "message": message}}
             try:
                 media_resp = await _evolution_proxy(
                     "POST",
@@ -977,22 +1135,35 @@ async def evolution_webhook(request: Request):
         )
 
         print(f"[Webhook] Transcrição enviada para {number}")
+        with _webhook_error_lock:
+            _webhook_error_count = 0
+        _dedup_complete(message_id)
         return {"status": "success", "text": full_text}
 
     except Exception as e:
         import traceback
         traceback.print_exc()
         print(f"[Webhook] Erro ao processar áudio: {type(e).__name__}")
+        _dedup_fail(message_id)
+        with _webhook_error_lock:
+            should_reply = _webhook_error_count < _MAX_ERROR_REPLIES
+            if should_reply:
+                _webhook_error_count += 1
+        if not should_reply:
+            print(f"[Webhook] Limite de {_MAX_ERROR_REPLIES} mensagens de erro atingido, suprimindo reply.")
+            raise HTTPException(status_code=500, detail="Erro interno ao processar áudio do webhook.")
         try:
             error_quote: dict = {}
             if message_id:
                 error_quote = {"quotedMessage": {"key": {"id": message_id}}}
+            remaining = _MAX_ERROR_REPLIES - _webhook_error_count
+            suffix = f" ({remaining} aviso(s) restante(s))" if remaining > 0 else ""
             await _evolution_proxy(
                 "POST",
                 f"/message/sendText/{EVOLUTION_INSTANCE_NAME}",
                 json={
                     "number": number,
-                    "text": f"❌ #{audio_number} Não foi possível transcrever o áudio (erro: {type(e).__name__}). Verifique se o modelo está ativo ou tente novamente com um áudio mais curto.",
+                    "text": f"❌ #{audio_number} Não foi possível transcrever o áudio (erro: {type(e).__name__}). Verifique se o modelo está ativo ou tente novamente com um áudio mais curto.{suffix}",
                     **error_quote,
                 },
             )

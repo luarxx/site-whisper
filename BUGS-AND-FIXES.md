@@ -12,7 +12,6 @@ Registro de bugs encontrados, causas raiz e solucoes aplicadas. O agente deve co
 **Sintoma:** O que foi observado (mensagem de erro, comportamento).
 
 **Causa:** Diagnostico final.
-
 **Solucao:** O que resolveu (commit, arquivo, abordagem).
 
 **Arquivos afetados:** `src/...`, `main.py`
@@ -23,6 +22,66 @@ Registro de bugs encontrados, causas raiz e solucoes aplicadas. O agente deve co
 ---
 
 ## Historico
+
+### 2026-06-21 Restart do servidor reprocessa áudios antigos (sem filtro de timestamp + dedup não persistente)
+
+**Sintoma:** Quando o `whisper-api` reiniciava (deploy, OOM, `pm2 restart`), o bot entrava em loop processando audios antigos (com `messageTimestamp` de horas/dias atras) que a Evolution API reenviava como webhooks replay. O dedup em memoria era perdido no restart, entao audios ja transcritos eram processados novamente.
+
+**Causa:** Dois problemas combinados. (1) O cache de dedup (`_completed_messages`) vivia apenas em memoria; ao reiniciar, todo o historico era perdido. (2) O webhook nao validava o `messageTimestamp` do payload — aceitava qualquer audio, mesmo com timestamp muito antigo. A Evolution API, ao reentregar webhooks pendentes/replay, disparava todos os eventos antigos em sequencia.
+
+**Solucao:** (1) Adicionado `SERVER_START_TIME = time.time()` no startup (`main.py:146`) e filtro no webhook que rejeita mensagens com `messageTimestamp < SERVER_START_TIME - 60` (buffer de 60s para tolerar clock skew entre WhatsApp e o servidor), retornando `{"status":"ignored","reason":"old_message"}`. (2) Persistencia do dedup em `webhook_dedup.json` (atomic write via `os.replace`): `_dedup_load_persisted()` carrega no startup; `_dedup_save_persisted()` grava apos cada `_dedup_complete()`. O arquivo e excluido do git via `.gitignore`. Combinado, restart + Evolution replay nao causam mais loop.
+
+**Arquivos afetados:** `main.py`, `.gitignore`
+
+**Tags:** `backend` `whatsapp` `webhook` `restart` `dedup` `persistence`
+
+### 2026-06-21 Webhook pode transcrever o mesmo áudio múltiplas vezes (sem dedup)
+
+**Sintoma:** A Evolution API pode reenviar o mesmo webhook em caso de timeout/resposta lenta. Como `main.py` não tinha controle de duplicação, o mesmo `message_id` era transcrito e respondido 2x ou mais — o usuário recebia a mesma transcrição em loop no self-chat.
+
+**Causa:** O webhook em `main.py:891` (historico) nao rastreava mensagens em processamento. Cada retry da Evolution gerava uma nova passagem pelo webhook, novo ack, nova transcricao e novo reply.
+
+**Solucao:** (1) Adicionados dicionarios `(_in_flight_messages, _completed_messages)` + lock + funcoes `_dedup_try_start()`, `_dedup_complete()`, `_dedup_fail()` em `main.py:142-178`. (2) Logo apos o filtro do self-chat e ANTES do ack, o codigo chama `_dedup_try_start(message_id)`; se ja estiver em voo ou concluido, retorna `{"status":"ignored","reason":"already_in_flight"|"already_completed"}`. (3) No caminho de sucesso (apos o reply), chama `_dedup_complete(message_id)` para mover de in-flight para completed. (4) No `except` (qualquer falha de download/transcricao/reply), chama `_dedup_fail(message_id)` para liberar a mensagem e permitir retry. (5) TTL de 1h (`_DEDUP_TTL_SECONDS = 3600`) limpa o cache periodicamente, chamado dentro de `_dedup_try_start` via `_dedup_cleanup_expired()`. (6) Mensagens sem `message_id` nao sao dedupadas (pass-through).
+
+**Arquivos afetados:** `main.py`
+
+**Tags:** `backend` `whatsapp` `webhook` `dedup` `idempotency`
+
+### 2026-06-21 Bot envia mensagens de erro em loop ao falhar na transcrição
+
+**Sintoma:** Quando o bot encontrava um erro de transcrição (ex: modelo nao carregado, audio invalido, CDN fora), o webhook enviava uma mensagem `❌ #N Nao foi possivel transcrever o audio (...)` para o self-chat do usuario **a cada audio recebido**, sem limite. O usuario enviava 5 audios em sequencia → recebia 5 mensagens de erro.
+
+**Causa:** O bloco `except Exception` no `evolution_webhook` (`main.py:1017-1036`, historico) chamava `_evolution_proxy("/message/sendText/...")` incondicionalmente para cada erro. Nao havia contador, rate limit nem circuit breaker para evitar spam.
+
+**Solucao:** (1) Adicionadas variaveis globais `_webhook_error_count = 0`, `_webhook_error_lock = threading.Lock()` e constante `_MAX_ERROR_REPLIES = 3` no escopo do modulo. (2) No caminho de sucesso da transcricao (`return {"status": "success", ...}`), o contador e resetado para `0` — assim uma falha seguida de sucesso limpa o historico. (3) No `except`, o codigo verifica `if _webhook_error_count < _MAX_ERROR_REPLIES` dentro do lock; se ja atingiu o limite, nao envia a mensagem de erro e loga `"Limite de 3 mensagens de erro atingido, suprimindo reply."` antes de retornar 500. (4) A mensagem de erro passou a incluir `(N aviso(s) restante(s))` para o usuario saber que o bot silenciou apos o limite.
+
+**Arquivos afetados:** `main.py`
+
+**Tags:** `backend` `whatsapp` `webhook` `ux` `rate-limit`
+
+### 2026-06-21 Webhook ignora audios do self-chat (payload getBase64FromMediaMessage sem envelope)
+
+**Sintoma:** Apos o usuario enviar audio no self-chat, o bot recebia o webhook mas falhava em todas as tentativas de download do audio, devolvendo `500 Internal Server Error` e mensagem de erro no WhatsApp. O log mostrava `[Webhook] getBase64FromMediaMessage falhou: 400: ["TypeError: Cannot read properties of undefined (reading 'ephemeralMessage')"]` e depois `[Webhook] Erro ao processar audio: EOFError` (arquivo criptografado baixado direto da CDN do WhatsApp).
+
+**Causa:** A chamada para `POST /chat/getBase64FromMediaMessage/{instance}` da Evolution API espera o DTO `{ message: proto.WebMessageInfo, convertToMp4?: boolean }`. O codigo em `main.py:948` (historico) enviava o body direto como `{key, message: {audioMessage: ...}}`, sem envelopar no campo `message` esperado pelo DTO. A Evolution API tentava acessar `data.message.message` (achando que era WebMessageInfo), encontrava apenas `{audioMessage: ...}`, e crashava com `Cannot read properties of undefined (reading 'ephemeralMessage')` no loop `for (const subtype of MessageSubtype)`. O fallback de download direto da URL pegava o arquivo `.enc` criptografado do WhatsApp CDN (formato nao suportado pelo Whisper).
+
+**Solucao:** Envelopar o payload corretamente: `full_message = {"message": {"key": data.get("key", {}), "message": message}}` — espelhando o pattern usado pelo `chatwoot.service.ts` da Evolution (`waInstance.getBase64FromMediaMessage({ message: { ...body } })`). Apos o fix, o endpoint retorna o audio descriptado em base64 (5075 bytes batendo com o `fileLength` original) e a transcricao e concluida com sucesso.
+
+**Arquivos afetados:** `main.py`
+
+**Tags:** `backend` `whatsapp` `webhook` `evolution`
+
+### 2026-06-21 Bot WhatsApp transcreveria áudios enviados a grupos/contatos (filtro apenas `fromMe`)
+
+**Sintoma:** O webhook `/webhook/evolution` em `main.py` filtrava mensagens apenas por `key.fromMe == true`. Isso permitia que **qualquer áudio enviado pelo usuário conectado a um grupo ou a um contato** fosse baixado, transcrito e respondido — não apenas o self-chat. O usuário solicitou que o bot tivesse acesso **somente** ao self-chat.
+
+**Causa:** O filtro `if not is_from_me: return ignored "not_self_chat"` (em `main.py:882-883`, no histórico) só rejeita mensagens recebidas de terceiros. Quando o próprio usuário envia áudio para um grupo (`key.fromMe: true, key.remoteJid: "120363...@g.us"`) ou para um contato individual, `fromMe` é `true` e o áudio seguia para transcrição. Os logs mostravam que o usuário ainda não tinha testado esse cenário (só enviava áudio no self-chat `557988542929@s.whatsapp.net`), então o bug ficou latente.
+
+**Solucao:** (1) Adicionada variável global `SELF_CHAT_JID` carregada de `whisper_config.json > evolution.whatsapp_self_chat_jid`. (2) No webhook, após validar `fromMe: true`, rejeitar explicitamente JIDs de grupo (`@g.us` → `group_chat`) e qualquer JID que não seja `@s.whatsapp.net` (`not_individual_chat`). (3) Se `SELF_CHAT_JID` ainda for `None`, a primeira mensagem de self-chat recebida define e persiste o JID via `_set_self_chat_jid()`. Em chamadas subsequentes, o `remoteJid` é comparado estritamente contra o JID cacheado — qualquer divergência retorna `not_self_chat`. (4) `_clear_self_chat_jid()` é chamado em `whatsapp_disconnect` e na detecção de sessão morta, para que a próxima reconexão possa re-detectar (caso o usuário troque de número). (5) O campo `whatsapp_self_chat_jid` foi adicionado a `EVOLUTION_DEFAULTS` e persistido por `_save_evolution_config()`.
+
+**Arquivos afetados:** `main.py`
+
+**Tags:** `backend` `whatsapp` `webhook` `security` `privacy`
 
 ### 2026-06-19 VPS troca de modelo sozinha + config do formulário afeta WhatsApp
 

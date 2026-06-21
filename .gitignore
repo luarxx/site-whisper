@@ -15,6 +15,8 @@ acessar-vps.bat
 *.err
 whisper_config.json
 whisper_last_good.json
+webhook_dedup.json
+.webhook_dedup.json.tmp
 .whisper_startup
 temp_*
 *.openchamber.backup
