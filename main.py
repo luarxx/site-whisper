@@ -799,11 +799,14 @@ async def whatsapp_status(_=Depends(_verify_api_key)):
             "instanceName": EVOLUTION_INSTANCE_NAME,
         }
     except HTTPException as e:
+        if e.status_code == 404 or "does not exist" in str(e.detail).lower():
+            print(f"[WhatsApp] Instancia nao existe, reportando idle")
+            return {"state": "idle", "instanceName": EVOLUTION_INSTANCE_NAME}
         print(f"[WhatsApp] HTTPException ao obter status: {e.detail}")
         return {"state": "error", "instanceName": EVOLUTION_INSTANCE_NAME, "error": str(e.detail)}
     except Exception as e:
         print(f"[WhatsApp] Erro inesperado ao obter status: {type(e).__name__}: {e}")
-        return {"state": "error", "instanceName": EVOLUTION_INSTANCE_NAME, "error": "Não foi possível verificar o status do WhatsApp."}
+        return {"state": "error", "instanceName": EVOLUTION_INSTANCE_NAME, "error": "Nao foi possivel verificar o status do WhatsApp."}
 
 
 @app.delete("/whatsapp/instance")

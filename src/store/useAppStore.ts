@@ -275,7 +275,20 @@ export const useAppStore = create<AppState>()(
       if (data.state === 'connected') {
         set({ whatsAppState: 'connected', whatsAppQrCode: null, whatsAppError: null });
       } else if (data.state === 'connecting') {
-        set({ whatsAppState: 'connecting', whatsAppError: null });
+        if (!get().whatsAppQrCode) {
+          try {
+            const resumeData = await client.resumeWhatsApp();
+            set({
+              whatsAppState: resumeData.state,
+              whatsAppQrCode: resumeData.qrcode ?? null,
+              whatsAppError: null,
+            });
+          } catch {
+            set({ whatsAppState: 'connecting', whatsAppError: null });
+          }
+        } else {
+          set({ whatsAppState: 'connecting', whatsAppError: null });
+        }
       } else {
         const isActivelyConnecting = get().whatsAppState === 'connecting';
         const isSessionDead = data.state === 'idle';
