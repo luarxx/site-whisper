@@ -6,6 +6,7 @@ import re
 import glob as glob_module
 import uuid
 import threading
+import asyncio
 import httpx
 import psutil
 from datetime import datetime
@@ -34,13 +35,17 @@ app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 @app.on_event("shutdown")
 async def shutdown_event():
     print("[Shutdown] Aguardando operações em andamento...")
-    import asyncio
     await asyncio.sleep(3)
     global _http_client
     if _http_client and not _http_client.is_closed:
         await _http_client.aclose()
         _http_client = None
     print("[Shutdown] Finalizado.")
+
+
+@app.on_event("startup")
+async def startup_event():
+    asyncio.create_task(_auto_reconnect_whatsapp())
 
 # ── CORS ──────────────────────────────────────────────────
 app.add_middleware(
@@ -770,6 +775,105 @@ def _extract_whatsapp_state(data) -> str:
             if isinstance(val2, str):
                 return val2
     return "close"
+
+
+async def _auto_reconnect_whatsapp():
+    """Tenta reconectar automaticamente a instancia WhatsApp apos restart do servidor."""
+    if not EVOLUTION_API_KEY:
+        print("[WhatsApp] Auto-reconnect: EVOLUTION_API_KEY nao configurada, pulando.")
+        return
+
+    await asyncio.sleep(5)
+
+    try:
+        instances: list = await _evolution_proxy("GET", "/instance/fetchInstances")
+    except HTTPException as e:
+        print(f"[WhatsApp] Auto-reconnect: Evolution API inacessivel ({e.status_code}).")
+        return
+    except Exception as e:
+        print(f"[WhatsApp] Auto-reconnect: erro ao buscar instancias: {e}")
+        return
+
+    if not isinstance(instances, list):
+        print("[WhatsApp] Auto-reconnect: resposta inesperada de fetchInstances, pulando.")
+        return
+
+    exists = any(
+        isinstance(inst, dict) and inst.get("name") == EVOLUTION_INSTANCE_NAME
+        for inst in instances
+    )
+
+    if not exists:
+        print("[WhatsApp] Auto-reconnect: instancia nao existe. Use o dashboard para conectar.")
+        return
+
+    inst = next(
+        (i for i in instances if isinstance(i, dict) and i.get("name") == EVOLUTION_INSTANCE_NAME),
+        None,
+    )
+
+    dead = False
+    if inst:
+        code = inst.get("disconnectionReasonCode")
+        obj = inst.get("disconnectionObject", "")
+        if code == 401 or (isinstance(obj, str) and "device_removed" in obj):
+            dead = True
+
+    if dead:
+        print("[WhatsApp] Auto-reconnect: sessao morta (401/device_removed). Removendo instancia antiga...")
+        try:
+            await _evolution_proxy("DELETE", f"/instance/logout/{EVOLUTION_INSTANCE_NAME}")
+        except Exception:
+            pass
+        try:
+            await _evolution_proxy("DELETE", f"/instance/delete/{EVOLUTION_INSTANCE_NAME}")
+            print("[WhatsApp] Auto-reconnect: instancia antiga removida. Use o dashboard para criar nova.")
+        except Exception as e:
+            print(f"[WhatsApp] Auto-reconnect: falha ao deletar instancia: {e}")
+        _clear_self_chat_jid()
+        return
+
+    print("[WhatsApp] Auto-reconnect: instancia existente encontrada, reconfigurando webhook...")
+
+    try:
+        await _evolution_proxy(
+            "POST",
+            f"/webhook/set/{EVOLUTION_INSTANCE_NAME}",
+            json={
+                "webhook": {
+                    "url": WHATSAPP_WEBHOOK_URL,
+                    "events": ["MESSAGES_UPSERT"],
+                    "enabled": True,
+                },
+            },
+        )
+    except HTTPException as e:
+        print(f"[WhatsApp] Auto-reconnect: falha ao configurar webhook ({e.status_code}).")
+        return
+    except Exception as e:
+        print(f"[WhatsApp] Auto-reconnect: erro ao configurar webhook: {e}")
+        return
+
+    try:
+        connect_data = await _evolution_proxy("GET", f"/instance/connect/{EVOLUTION_INSTANCE_NAME}")
+        print(f"[WhatsApp] Auto-reconnect: /connect response keys={list(connect_data.keys()) if isinstance(connect_data, dict) else type(connect_data).__name__!r}")
+    except HTTPException as e:
+        print(f"[WhatsApp] Auto-reconnect: falha ao reconectar ({e.status_code}).")
+        return
+    except Exception as e:
+        print(f"[WhatsApp] Auto-reconnect: erro ao reconectar: {e}")
+        return
+
+    qrcode = None
+    if isinstance(connect_data, str):
+        qrcode = connect_data if len(connect_data) > 20 else None
+    elif isinstance(connect_data, dict):
+        qrcode = connect_data.get("base64") or connect_data.get("qrcode") or connect_data.get("code") or None
+
+    if qrcode:
+        print("[WhatsApp] Auto-reconnect: sessao requer novo QR code. Use o dashboard para escanear.")
+    else:
+        print("[WhatsApp] Auto-reconnect: sessao reconectada com sucesso!")
 
 
 @app.post("/whatsapp/instance")

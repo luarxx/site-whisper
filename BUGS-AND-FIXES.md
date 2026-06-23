@@ -23,6 +23,18 @@ Registro de bugs encontrados, causas raiz e solucoes aplicadas. O agente deve co
 
 ## Historico
 
+### 2026-06-23 Sessão WhatsApp morre após restart e exige reconexão manual
+
+**Sintoma:** Após restart do `whisper-api` (deploy, crash, `pm2 restart`), a instância WhatsApp ficava inacessível e o bot parava de responder. O usuário precisava acessar o dashboard, clicar em "Conectar" e escanear o QR code novamente — um processo manual e frágil.
+
+**Causa:** O `whisper-api` não tentava reconectar a instância WhatsApp automaticamente no startup. A Evolution API persistia os dados da sessão, mas o webhook não era reconfigurado e a sessão não era reativada após o restart.
+
+**Solucao:** (1) Adicionado evento `startup` no FastAPI que dispara `_auto_reconnect_whatsapp()` como background task. (2) A função verifica se a instância `whisper-bot` existe na Evolution API; se existir e não estiver morta (sem `disconnectionReasonCode=401` ou `device_removed`), reconfigura o webhook e chama `GET /instance/connect/{name}` para reativar a sessão. (3) Se a instância estiver morta, remove a instância antiga e limpa o `SELF_CHAT_JID`. (4) Delay de 5s antes da tentativa para garantir que a Evolution API esteja pronta.
+
+**Arquivos afetados:** `main.py`
+
+**Tags:** `backend` `whatsapp` `startup` `reconnect`
+
 ### 2026-06-21 Restart do servidor reprocessa áudios antigos (sem filtro de timestamp + dedup não persistente)
 
 **Sintoma:** Quando o `whisper-api` reiniciava (deploy, OOM, `pm2 restart`), o bot entrava em loop processando audios antigos (com `messageTimestamp` de horas/dias atras) que a Evolution API reenviava como webhooks replay. O dedup em memoria era perdido no restart, entao audios ja transcritos eram processados novamente.
